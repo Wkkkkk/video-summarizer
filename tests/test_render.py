@@ -30,3 +30,8 @@ def test_render_markdown_with_visual_includes_section():
     )
     assert "## Visual notes" in md
     assert "- chart on screen" in md
+
+
+def test_slugify_falls_back_to_untitled_for_non_ascii():
+    assert slugify("日本語のタイトル") == "untitled"
+    assert slugify("!!!") == "untitled"

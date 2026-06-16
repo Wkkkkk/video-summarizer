@@ -63,3 +63,38 @@ def test_fetch_subtitles_returns_none_when_no_vtt(tmp_path):
         return R()
 
     assert fetch_subtitles("https://example.com/v", tmp_path, run_fn=fake_run) is None
+
+
+from video_summarizer.transcribe import extract_audio, WHISPER_BACKENDS, transcribe_audio
+
+
+def test_extract_audio_builds_ffmpeg_command(tmp_path):
+    calls = []
+
+    def fake_run(cmd, **kwargs):
+        calls.append(cmd)
+        class R: returncode = 0
+        return R()
+
+    out = extract_audio("movie.mp4", tmp_path, run_fn=fake_run)
+    assert out.endswith(".wav")
+    cmd = calls[0]
+    assert cmd[0] == "ffmpeg"
+    assert "movie.mp4" in cmd
+    assert "16000" in cmd  # -ar 16000
+
+
+def test_default_whisper_backend_registered():
+    assert "whisper.cpp" in WHISPER_BACKENDS
+
+
+def test_transcribe_audio_uses_selected_backend():
+    def fake_backend(audio_path, run_fn, model):
+        return {"segments": [{"start": 0.0, "text": "spoken"}], "text": "spoken"}
+
+    result = transcribe_audio(
+        "a.wav", backend="fake", model="small",
+        registry={"fake": fake_backend}, run_fn=lambda *a, **k: None,
+    )
+    assert result["text"] == "spoken"
+    assert result["source"] == "whisper:small"

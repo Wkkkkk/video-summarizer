@@ -11,6 +11,8 @@ import os
 import re
 import subprocess
 
+from .errors import ConfigError, StageError
+
 _TS = re.compile(r"(?:(\d+):)?(\d{2}):(\d{2})[.,](\d{3})\s*-->")
 _TAG = re.compile(r"<[^>]+>")
 
@@ -60,3 +62,41 @@ def fetch_subtitles(url: str, workdir, run_fn=subprocess.run) -> dict | None:
         return None
     parsed["source"] = "subtitles"
     return parsed
+
+
+def extract_audio(video_path: str, workdir, run_fn=subprocess.run) -> str:
+    """Extract 16kHz mono WAV from a video via ffmpeg. Returns the wav path."""
+    out = os.path.join(str(workdir), "audio.wav")
+    cmd = ["ffmpeg", "-y", "-i", video_path, "-ar", "16000", "-ac", "1", out]
+    proc = run_fn(cmd, capture_output=True, text=True)
+    if getattr(proc, "returncode", 0) != 0:
+        raise StageError("ffmpeg audio extraction failed")
+    return out
+
+
+def _whisper_cpp_backend(audio_path: str, run_fn, model: str) -> dict:
+    """Run whisper.cpp (`whisper-cli`) and read its plain-text output."""
+    out_base = audio_path + ".out"
+    cmd = ["whisper-cli", "-m", f"models/ggml-{model}.bin",
+           "-f", audio_path, "-otxt", "-of", out_base]
+    proc = run_fn(cmd, capture_output=True, text=True)
+    if getattr(proc, "returncode", 0) != 0:
+        raise StageError("whisper.cpp transcription failed")
+    with open(out_base + ".txt", encoding="utf-8") as fh:
+        text = fh.read().strip()
+    return {"segments": [{"start": 0.0, "text": text}], "text": text}
+
+
+WHISPER_BACKENDS = {"whisper.cpp": _whisper_cpp_backend}
+
+
+def transcribe_audio(audio_path: str, backend: str, model: str,
+                     registry=None, run_fn=subprocess.run) -> dict:
+    """Dispatch to a Whisper backend; stamps source='whisper:<model>'."""
+    registry = WHISPER_BACKENDS if registry is None else registry
+    fn = registry.get(backend)
+    if fn is None:
+        raise ConfigError(f"unknown whisper backend: {backend}")
+    result = fn(audio_path, run_fn=run_fn, model=model)
+    result["source"] = f"whisper:{model}"
+    return result

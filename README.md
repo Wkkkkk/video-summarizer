@@ -46,8 +46,10 @@ video-summarizer ./talk.mp4 --visual                          # + on-screen visu
 video-summarizer ./talk.mp4 --dry-run                         # show the plan, do nothing
 ```
 
-Output: `./analyses/<slug>.md`. Exit codes: `0` success, `1` partial (e.g. summary
-failed but transcript written), `2` config/usage error.
+Output: `./analyses/<slug>.md` (slug from the source title; Unicode titles kept,
+clashes get a `-2`, `-3`, … suffix rather than overwriting). Exit codes: `0`
+success, `1` partial (e.g. summary failed but transcript written), `2`
+config/usage error.
 
 ## Test
 

@@ -18,8 +18,10 @@ Real runs need network access.
 
 ## What every run produces
 
-- **File:** `./analyses/<slug>.md` (the source title, slugified). `analyses/` is
-  gitignored, so outputs don't clutter the repo.
+- **File:** `./analyses/<slug>.md` (the source title, slugified — Unicode titles
+  are kept, e.g. `深度学习教程-第一讲.md`). On a name clash the run appends `-2`,
+  `-3`, … instead of overwriting an earlier analysis. `analyses/` is gitignored,
+  so outputs don't clutter the repo.
 - **Contents:** a metadata line —
   `source · duration · date · transcript-source: <subtitles | whisper:MODEL>` —
   then `## Summary`, `## Chapters` (timestamped), `## Transcript`, and

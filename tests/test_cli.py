@@ -52,6 +52,14 @@ def test_cli_dry_run_writes_nothing(tmp_path, monkeypatch):
     assert list(tmp_path.glob("*.md")) == []
 
 
+def test_cli_dry_run_reports_language(tmp_path, monkeypatch, capsys):
+    _patch_stages(monkeypatch, [])
+    cli.main(["movie.mp4", "--dry-run", "--out", str(tmp_path)])
+    out = capsys.readouterr().out
+    assert "lang=en" in out          # summary fallback
+    assert "whisper_lang=auto" in out  # auto-detect by default
+
+
 def test_cli_missing_key_returns_exit_2(tmp_path, monkeypatch):
     monkeypatch.delenv("GEMINI_API_KEY", raising=False)
     code = cli.main(["movie.mp4", "--out", str(tmp_path)])

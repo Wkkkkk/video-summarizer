@@ -16,7 +16,7 @@ from .acquire import acquire_media
 
 _TS = re.compile(r"(?:(\d+):)?(\d{2}):(\d{2})[.,](\d{3})\s*-->")
 _TAG = re.compile(r"<[^>]+>")
-_DETECT = re.compile(r"auto-detected language:\s*([a-z]{2,3})")
+_DETECT = re.compile(r"auto-detected language:\s*([a-zA-Z]{2,3})")
 
 
 def _ts_to_seconds(h, m, s, ms) -> float:
@@ -95,7 +95,7 @@ def _whisper_cpp_backend(audio_path: str, run_fn, model: str,
     reduced to its primary subtag ("zh-Hans" -> "zh"). With a concrete code the
     result's "lang" is that code; in "auto" mode it is the language whisper
     reports (parsed from its output), or unset if no detection line is found."""
-    code = "auto" if not lang or lang == "auto" else lang.split("-")[0]
+    code = "auto" if not lang or lang.lower() == "auto" else lang.split("-")[0].lower()
     out_base = audio_path + ".out"
     cmd = ["whisper-cli", "-m", f"models/ggml-{model}.bin",
            "-l", code, "-f", audio_path, "-otxt", "-of", out_base]
@@ -111,7 +111,7 @@ def _whisper_cpp_backend(audio_path: str, run_fn, model: str,
         out = (getattr(proc, "stdout", "") or "") + (getattr(proc, "stderr", "") or "")
         m = _DETECT.search(out)
         if m:
-            result["lang"] = m.group(1)
+            result["lang"] = m.group(1).lower()
     return result
 
 

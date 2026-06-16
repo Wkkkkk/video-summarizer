@@ -330,3 +330,35 @@ def test_resolve_transcript_falls_back_to_lang_hint_when_undetected(tmp_path):
         fetch_fn=fetch_fn, acquire_fn=acquire_fn,
         extract_fn=extract_fn, transcribe_fn=transcribe_fn)
     assert result["lang"] == "en"
+
+
+def test_whisper_backend_auto_lowercases_detected_language(tmp_path):
+    audio = str(tmp_path / "audio.wav")
+
+    def run_fn(cmd, capture_output=False, text=True):
+        of = cmd[cmd.index("-of") + 1]
+        with open(of + ".txt", "w", encoding="utf-8") as fh:
+            fh.write("hi")
+        return types.SimpleNamespace(
+            returncode=0, stdout="",
+            stderr="auto-detected language: ZH (p = 0.9)")
+
+    result = _whisper_cpp_backend(audio, run_fn=run_fn, model="base", lang="auto")
+    assert result["lang"] == "zh"
+
+
+def test_whisper_backend_explicit_lang_lowercased(tmp_path):
+    audio = str(tmp_path / "audio.wav")
+    captured = {}
+
+    def run_fn(cmd, capture_output=False, text=True):
+        captured["cmd"] = cmd
+        of = cmd[cmd.index("-of") + 1]
+        with open(of + ".txt", "w", encoding="utf-8") as fh:
+            fh.write("hi")
+        return types.SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    result = _whisper_cpp_backend(audio, run_fn=run_fn, model="base", lang="EN")
+    cmd = captured["cmd"]
+    assert cmd[cmd.index("-l") + 1] == "en"
+    assert result["lang"] == "en"

@@ -11,6 +11,9 @@ import subprocess
 
 from .errors import StageError
 
+# A hung download must not block the run forever.
+_DOWNLOAD_TIMEOUT_SECONDS = 1800
+
 
 def _ytdlp_detail(proc) -> str:
     """Pick the most informative line of yt-dlp output to append to an error:
@@ -25,16 +28,20 @@ def _ytdlp_detail(proc) -> str:
     return f" — {detail}"
 
 
-def acquire_media(source: str, is_url: bool, workdir, run_fn=subprocess.run) -> str:
+def acquire_media(source: str, is_url: bool, workdir, run_fn=subprocess.run,
+                  timeout: int = _DOWNLOAD_TIMEOUT_SECONDS) -> str:
     """Return a local media path for `source`. Local files pass through; URLs
     are downloaded with yt-dlp into `workdir`. Raises StageError on download
-    failure or if no media file is produced; the yt-dlp error is appended to
-    the message when available."""
+    failure, timeout, or if no media file is produced; the yt-dlp error is
+    appended to the message when available."""
     if not is_url:
         return source
     out_tmpl = os.path.join(str(workdir), "media.%(ext)s")
     cmd = ["yt-dlp", "-f", "b/bv*+ba", "-o", out_tmpl, "--", source]
-    proc = run_fn(cmd, capture_output=True, text=True)
+    try:
+        proc = run_fn(cmd, capture_output=True, text=True, timeout=timeout)
+    except subprocess.TimeoutExpired:
+        raise StageError(f"media download timed out after {timeout}s: {source}")
     if getattr(proc, "returncode", 0) != 0:
         raise StageError(f"media download failed: {source}{_ytdlp_detail(proc)}")
     files = sorted(glob.glob(os.path.join(str(workdir), "media.*")))

@@ -2,17 +2,33 @@
 name = "video-summarizer"
 version = "0.1.0"
 description = "Turn a video into a structured markdown: transcript + summary + chapters + optional visual notes."
+readme = "README.md"
 requires-python = ">=3.11"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
+authors = [{ name = "Kun Wu" }]
+keywords = ["video", "transcript", "summary", "whisper", "gemini"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Intended Audience :: Developers",
+    "Topic :: Multimedia :: Video",
+    "Topic :: Text Processing :: Linguistic",
+    "Environment :: Console",
+]
 dependencies = ["google-genai>=1.0.0"]
 
 [project.optional-dependencies]
 dev = ["pytest>=8.0.0"]
 
+[project.urls]
+Homepage = "https://github.com/OWNER/video-summarizer"
+Repository = "https://github.com/OWNER/video-summarizer"
+
 [project.scripts]
 video-summarizer = "video_summarizer.cli:main"
 
 [build-system]
-requires = ["setuptools>=68"]
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]

@@ -1,6 +1,30 @@
+import subprocess
+
 import pytest
 from video_summarizer.acquire import acquire_media
 from video_summarizer.errors import StageError
+
+
+def test_acquire_passes_timeout_to_run_fn(tmp_path):
+    captured = {}
+
+    def fake_run(cmd, **kwargs):
+        captured.update(kwargs)
+        (tmp_path / "media.mp4").write_bytes(b"x")
+        class R:
+            returncode = 0
+        return R()
+
+    acquire_media("https://r2.example/x.mp4", is_url=True, workdir=tmp_path, run_fn=fake_run)
+    assert captured.get("timeout")  # a positive download timeout is enforced
+
+
+def test_acquire_raises_stage_error_on_timeout(tmp_path):
+    def fake_run(cmd, **kwargs):
+        raise subprocess.TimeoutExpired(cmd, kwargs.get("timeout", 1))
+
+    with pytest.raises(StageError, match="timed out"):
+        acquire_media("https://r2.example/x.mp4", is_url=True, workdir=tmp_path, run_fn=fake_run)
 
 
 def _ok_run_factory(workdir, write=True):

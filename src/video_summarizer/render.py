@@ -41,7 +41,7 @@ def render_markdown(title, source, duration, date, transcript, analysis, visual)
     if not chapters:
         lines.append("_(none)_")
     for ch in chapters:
-        lines.append(f"- {ch['time']} — {ch['title']}")
+        lines.append(f"- {ch.get('time', '??:??')} — {ch.get('title', '')}")
     if visual is not None:
         lines += ["", "## Visual notes"]
         for note in visual.get("notes", []):

@@ -107,7 +107,50 @@ def test_transcribe_audio_uses_selected_backend():
     assert result["source"] == "whisper:small"
 
 
+import subprocess
+
+
+def test_extract_audio_passes_timeout_and_raises_on_timeout(tmp_path):
+    captured = {}
+
+    def capture_run(cmd, **kwargs):
+        captured.update(kwargs)
+        class R:
+            returncode = 0
+        return R()
+
+    extract_audio("movie.mp4", tmp_path, run_fn=capture_run)
+    assert captured.get("timeout")
+
+    def timeout_run(cmd, **kwargs):
+        raise subprocess.TimeoutExpired(cmd, kwargs.get("timeout", 1))
+
+    with pytest.raises(StageError, match="timed out"):
+        extract_audio("movie.mp4", tmp_path, run_fn=timeout_run)
+
+
+def test_whisper_backend_raises_stage_error_on_timeout(tmp_path):
+    audio = str(tmp_path / "audio.wav")
+
+    def timeout_run(cmd, **kwargs):
+        raise subprocess.TimeoutExpired(cmd, kwargs.get("timeout", 1))
+
+    with pytest.raises(StageError, match="timed out"):
+        _whisper_cpp_backend(audio, run_fn=timeout_run, model="base", lang="auto")
+
+
+def test_fetch_subtitles_returns_none_on_timeout(tmp_path):
+    def timeout_run(cmd, **kwargs):
+        raise subprocess.TimeoutExpired(cmd, kwargs.get("timeout", 1))
+
+    # Subtitles are an optional fast path; a timeout falls back to Whisper.
+    assert fetch_subtitles("https://example.com/v", tmp_path, run_fn=timeout_run) is None
+
+
 from video_summarizer.transcribe import resolve_transcript
+
+import pytest
+from video_summarizer.errors import StageError
 
 
 def test_resolve_uses_subtitles_when_available(tmp_path):
@@ -226,11 +269,11 @@ def test_whisper_backend_explicit_lang_normalizes_subtag(tmp_path):
     audio = str(tmp_path / "audio.wav")
     captured = {}
 
-    def run_fn(cmd, capture_output=False, text=True):
+    def run_fn(cmd, capture_output=False, text=True, timeout=None):
         captured["cmd"] = cmd
         of = cmd[cmd.index("-of") + 1]
-        with open(of + ".txt", "w", encoding="utf-8") as fh:
-            fh.write("你好")
+        with open(of + ".srt", "w", encoding="utf-8") as fh:
+            fh.write("1\n00:00:00,000 --> 00:00:02,000\n你好\n")
         return types.SimpleNamespace(returncode=0, stdout="", stderr="")
 
     result = _whisper_cpp_backend(audio, run_fn=run_fn, model="base", lang="zh-Hans")
@@ -240,14 +283,36 @@ def test_whisper_backend_explicit_lang_normalizes_subtag(tmp_path):
     assert result["text"] == "你好"
 
 
+def test_whisper_backend_parses_srt_into_timestamped_segments(tmp_path):
+    audio = str(tmp_path / "audio.wav")
+    captured = {}
+
+    def run_fn(cmd, capture_output=False, text=True, timeout=None):
+        captured["cmd"] = cmd
+        of = cmd[cmd.index("-of") + 1]
+        with open(of + ".srt", "w", encoding="utf-8") as fh:
+            fh.write("1\n00:00:00,000 --> 00:00:02,000\nHello world\n\n"
+                     "2\n00:00:02,000 --> 00:00:05,000\nsecond line\n")
+        return types.SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    result = _whisper_cpp_backend(audio, run_fn=run_fn, model="base", lang="en")
+    assert "-osrt" in captured["cmd"]
+    assert result["segments"] == [
+        {"start": 0.0, "text": "Hello world"},
+        {"start": 2.0, "text": "second line"},
+    ]
+    assert result["text"] == "Hello world second line"
+    assert result["lang"] == "en"
+
+
 def test_whisper_backend_auto_parses_detected_language(tmp_path):
     audio = str(tmp_path / "audio.wav")
     captured = {}
 
-    def run_fn(cmd, capture_output=False, text=True):
+    def run_fn(cmd, capture_output=False, text=True, timeout=None):
         captured["cmd"] = cmd
         of = cmd[cmd.index("-of") + 1]
-        with open(of + ".txt", "w", encoding="utf-8") as fh:
+        with open(of + ".srt", "w", encoding="utf-8") as fh:
             fh.write("こんにちは")
         return types.SimpleNamespace(
             returncode=0, stdout="",
@@ -262,9 +327,9 @@ def test_whisper_backend_auto_parses_detected_language(tmp_path):
 def test_whisper_backend_auto_parse_miss_leaves_lang_unset(tmp_path):
     audio = str(tmp_path / "audio.wav")
 
-    def run_fn(cmd, capture_output=False, text=True):
+    def run_fn(cmd, capture_output=False, text=True, timeout=None):
         of = cmd[cmd.index("-of") + 1]
-        with open(of + ".txt", "w", encoding="utf-8") as fh:
+        with open(of + ".srt", "w", encoding="utf-8") as fh:
             fh.write("hello")
         return types.SimpleNamespace(returncode=0, stdout="", stderr="")
 
@@ -335,9 +400,9 @@ def test_resolve_transcript_falls_back_to_lang_hint_when_undetected(tmp_path):
 def test_whisper_backend_auto_lowercases_detected_language(tmp_path):
     audio = str(tmp_path / "audio.wav")
 
-    def run_fn(cmd, capture_output=False, text=True):
+    def run_fn(cmd, capture_output=False, text=True, timeout=None):
         of = cmd[cmd.index("-of") + 1]
-        with open(of + ".txt", "w", encoding="utf-8") as fh:
+        with open(of + ".srt", "w", encoding="utf-8") as fh:
             fh.write("hi")
         return types.SimpleNamespace(
             returncode=0, stdout="",
@@ -351,10 +416,10 @@ def test_whisper_backend_explicit_lang_lowercased(tmp_path):
     audio = str(tmp_path / "audio.wav")
     captured = {}
 
-    def run_fn(cmd, capture_output=False, text=True):
+    def run_fn(cmd, capture_output=False, text=True, timeout=None):
         captured["cmd"] = cmd
         of = cmd[cmd.index("-of") + 1]
-        with open(of + ".txt", "w", encoding="utf-8") as fh:
+        with open(of + ".srt", "w", encoding="utf-8") as fh:
             fh.write("hi")
         return types.SimpleNamespace(returncode=0, stdout="", stderr="")
 

@@ -64,6 +64,8 @@ def main(argv=None) -> int:
     p.add_argument("--whisper-model", default="small")
     p.add_argument("--lang", default=None,
                    help="transcription/summary language; omit to auto-detect")
+    p.add_argument("--media-resolution", choices=["low", "default"], default="low",
+                   help="resolution for the --visual video pass; 'low' is ~3x cheaper")
     p.add_argument("--dry-run", action="store_true")
     args = p.parse_args(argv)
 
@@ -77,7 +79,8 @@ def main(argv=None) -> int:
         plan = (f"source={args.source} is_url={is_url} visual={args.visual} "
                 f"whisper={args.whisper_backend}:{args.whisper_model} "
                 f"lang={lang} whisper_lang={whisper_lang} "
-                f"summary={args.summary_backend}:{args.summary_model} out={args.out}")
+                f"summary={args.summary_backend}:{args.summary_model} "
+                f"media_res={args.media_resolution} out={args.out}")
         print("DRY RUN — would run:\n  " + plan)
         return 0
 
@@ -124,7 +127,8 @@ def main(argv=None) -> int:
         visual = None
         if args.visual:
             try:
-                visual = visual_notes(get_media(), backend="gemini-pro", client=client)
+                visual = visual_notes(get_media(), backend="gemini-pro", client=client,
+                                      media_resolution=args.media_resolution)
             except Exception as e:
                 print(f"warning: visual notes failed: {e}", file=sys.stderr)
                 exit_code = 1

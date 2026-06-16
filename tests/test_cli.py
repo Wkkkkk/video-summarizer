@@ -114,6 +114,45 @@ def test_cli_summary_language_follows_transcript(tmp_path, monkeypatch):
     assert captured["lang"] == "zh-Hans"
 
 
+def test_cli_no_lang_uses_auto_whisper_and_en_hint(monkeypatch, tmp_path):
+    captured = {}
+
+    def fake_resolve(source, **kwargs):
+        captured.update(kwargs)
+        return {"segments": [], "text": "hi", "lang": "en", "source": "subtitles"}
+
+    monkeypatch.setattr(cli, "make_gemini_client", lambda: object())
+    monkeypatch.setattr(cli, "resolve_transcript", fake_resolve)
+    monkeypatch.setattr(cli, "summarize",
+                        lambda *a, **k: {"summary": "s", "chapters": []})
+    monkeypatch.setattr(cli, "probe_duration", lambda *a, **k: "00:10")
+
+    rc = cli.main([str(tmp_path / "v.mp4"), "--out", str(tmp_path / "out")])
+    assert rc == 0
+    assert captured["lang"] == "en"
+    assert captured["whisper_lang"] == "auto"
+
+
+def test_cli_explicit_lang_sets_both(monkeypatch, tmp_path):
+    captured = {}
+
+    def fake_resolve(source, **kwargs):
+        captured.update(kwargs)
+        return {"segments": [], "text": "hi", "lang": "zh", "source": "subtitles"}
+
+    monkeypatch.setattr(cli, "make_gemini_client", lambda: object())
+    monkeypatch.setattr(cli, "resolve_transcript", fake_resolve)
+    monkeypatch.setattr(cli, "summarize",
+                        lambda *a, **k: {"summary": "s", "chapters": []})
+    monkeypatch.setattr(cli, "probe_duration", lambda *a, **k: "00:10")
+
+    rc = cli.main([str(tmp_path / "v.mp4"), "--lang", "zh",
+                   "--out", str(tmp_path / "out")])
+    assert rc == 0
+    assert captured["lang"] == "zh"
+    assert captured["whisper_lang"] == "zh"
+
+
 def test_cli_downloads_media_once_for_whisper_and_visual(tmp_path, monkeypatch):
     # A URL source with no subtitles + --visual: both the Whisper branch and the
     # visual stage need the media, but it must be downloaded only once and the

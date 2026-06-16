@@ -60,9 +60,13 @@ def main(argv=None) -> int:
     p.add_argument("--whisper-backend", default="whisper.cpp")
     p.add_argument("--summary-backend", default="gemini-flash")
     p.add_argument("--whisper-model", default="small")
-    p.add_argument("--lang", default="en")
+    p.add_argument("--lang", default=None,
+                   help="transcription/summary language; omit to auto-detect")
     p.add_argument("--dry-run", action="store_true")
     args = p.parse_args(argv)
+
+    lang = args.lang or "en"            # subtitle preference + summary fallback
+    whisper_lang = args.lang or "auto"  # whisper transcription language
 
     is_url = args.source.startswith(_URL_PREFIXES)
     title = _title_from_source(args.source)
@@ -93,7 +97,7 @@ def main(argv=None) -> int:
             transcript = resolve_transcript(
                 args.source, is_url=is_url, workdir=workdir,
                 whisper_backend=args.whisper_backend, model=args.whisper_model,
-                lang=args.lang, acquire_fn=get_media)
+                lang=lang, whisper_lang=whisper_lang, acquire_fn=get_media)
         except ConfigError as e:
             print(f"error: {e}", file=sys.stderr)
             return 2
@@ -103,7 +107,7 @@ def main(argv=None) -> int:
 
         try:
             analysis = summarize(transcript["text"], backend=args.summary_backend,
-                                 client=client, lang=transcript.get("lang", args.lang))
+                                 client=client, lang=transcript.get("lang", lang))
         except ConfigError as e:
             print(f"error: {e}", file=sys.stderr)
             return 2

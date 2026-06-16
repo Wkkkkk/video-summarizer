@@ -77,7 +77,7 @@ def main(argv=None) -> int:
         plan = (f"source={args.source} is_url={is_url} visual={args.visual} "
                 f"whisper={args.whisper_backend}:{args.whisper_model} "
                 f"lang={lang} whisper_lang={whisper_lang} "
-                f"summary={args.summary_backend} out={args.out}")
+                f"summary={args.summary_backend}:{args.summary_model} out={args.out}")
         print("DRY RUN — would run:\n  " + plan)
         return 0
 

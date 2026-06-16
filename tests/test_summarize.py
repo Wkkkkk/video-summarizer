@@ -1,6 +1,6 @@
 import pytest
-from video_summarizer.summarize import summarize, SUMMARIZERS
-from video_summarizer.errors import ConfigError
+from video_summarizer.summarize import summarize, SUMMARIZERS, _extract_json
+from video_summarizer.errors import ConfigError, StageError as _StageError
 
 
 def test_default_summarizer_registered():
@@ -20,3 +20,13 @@ def test_summarize_dispatches_to_backend():
 def test_summarize_unknown_backend_raises_config_error():
     with pytest.raises(ConfigError):
         summarize("t", backend="nope", client=None, lang="en", registry={})
+
+
+def test_extract_json_raises_stage_error_on_malformed_json():
+    with pytest.raises(_StageError):
+        _extract_json('prefix {not: valid json,,} suffix')
+
+
+def test_extract_json_raises_stage_error_when_no_object():
+    with pytest.raises(_StageError):
+        _extract_json('no json here at all')

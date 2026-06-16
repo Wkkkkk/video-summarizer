@@ -22,7 +22,10 @@ def _extract_json(text: str) -> dict:
     end = text.rfind("}")
     if start == -1 or end == -1:
         raise StageError("summarizer returned no JSON object")
-    return json.loads(text[start : end + 1])
+    try:
+        return json.loads(text[start : end + 1])
+    except json.JSONDecodeError as e:
+        raise StageError(f"summarizer returned invalid JSON: {e}") from e
 
 
 def _gemini_flash_backend(transcript_text: str, client, lang: str) -> dict:

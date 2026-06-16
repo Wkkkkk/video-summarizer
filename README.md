@@ -12,6 +12,8 @@ notes. Read the markdown to summarize and ask questions about the video.
    chapters) over the transcript, by default `gemini-2.5-pro`. Override with
    `--summary-model gemini-flash-latest` for a cheaper run.
 3. **Visual notes** — opt-in (`--visual`) Gemini Pro video pass. Off by default.
+   Runs at low media resolution to keep cost down; pass `--media-resolution
+   default` for full-resolution frames when on-screen text or charts matter.
 
 The summary and chapters are written in the **transcript's own language**: when
 subtitles are used, that subtitle language wins; otherwise Whisper auto-detects

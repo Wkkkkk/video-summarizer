@@ -181,7 +181,7 @@ def test_cli_downloads_media_once_for_whisper_and_visual(tmp_path, monkeypatch):
 
     captured = {}
 
-    def fake_visual(video_path, backend, client):
+    def fake_visual(video_path, backend, client, **kwargs):
         captured["video_path"] = video_path
         return {"notes": ["onscreen"]}
     monkeypatch.setattr(cli, "visual_notes", fake_visual)
@@ -238,3 +238,50 @@ def test_cli_summary_model_defaults_to_pro(tmp_path, monkeypatch):
     code = cli.main(["movie.mp4", "--out", str(tmp_path)])
     assert code == 0
     assert captured["model"] == "gemini-2.5-pro"
+
+
+def test_cli_threads_media_resolution_to_visual(tmp_path, monkeypatch):
+    captured = {}
+
+    def fake_visual(video_path, backend, client, media_resolution):
+        captured["media_resolution"] = media_resolution
+        return {"notes": ["x"]}
+
+    monkeypatch.setattr(cli, "resolve_transcript",
+        lambda *a, **k: {"text": "hi", "segments": [], "source": "subtitles"})
+    monkeypatch.setattr(cli, "summarize",
+        lambda *a, **k: {"tldr": "s", "key_points": [], "takeaways": [], "chapters": []})
+    monkeypatch.setattr(cli, "visual_notes", fake_visual)
+    monkeypatch.setattr(cli, "acquire_media", lambda *a, **k: "/local/media.mp4")
+    monkeypatch.setattr(cli, "make_gemini_client", lambda: object())
+    monkeypatch.setattr(cli, "probe_duration", lambda *a, **k: "00:30")
+    monkeypatch.setattr(cli, "today_str", lambda: "2026-06-16")
+    monkeypatch.setenv("GEMINI_API_KEY", "x")
+
+    code = cli.main(["movie.mp4", "--visual", "--media-resolution", "default",
+                     "--out", str(tmp_path)])
+    assert code == 0
+    assert captured["media_resolution"] == "default"
+
+
+def test_cli_media_resolution_defaults_to_low(tmp_path, monkeypatch):
+    captured = {}
+
+    def fake_visual(video_path, backend, client, media_resolution):
+        captured["media_resolution"] = media_resolution
+        return {"notes": ["x"]}
+
+    monkeypatch.setattr(cli, "resolve_transcript",
+        lambda *a, **k: {"text": "hi", "segments": [], "source": "subtitles"})
+    monkeypatch.setattr(cli, "summarize",
+        lambda *a, **k: {"tldr": "s", "key_points": [], "takeaways": [], "chapters": []})
+    monkeypatch.setattr(cli, "visual_notes", fake_visual)
+    monkeypatch.setattr(cli, "acquire_media", lambda *a, **k: "/local/media.mp4")
+    monkeypatch.setattr(cli, "make_gemini_client", lambda: object())
+    monkeypatch.setattr(cli, "probe_duration", lambda *a, **k: "00:30")
+    monkeypatch.setattr(cli, "today_str", lambda: "2026-06-16")
+    monkeypatch.setenv("GEMINI_API_KEY", "x")
+
+    code = cli.main(["movie.mp4", "--visual", "--out", str(tmp_path)])
+    assert code == 0
+    assert captured["media_resolution"] == "low"

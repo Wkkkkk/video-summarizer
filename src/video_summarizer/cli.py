@@ -95,7 +95,10 @@ def main(argv=None) -> int:
         try:
             analysis = summarize(transcript["text"], backend=args.summary_backend,
                                  client=client, lang=args.lang)
-        except StageError as e:
+        except ConfigError as e:
+            print(f"error: {e}", file=sys.stderr)
+            return 2
+        except Exception as e:
             print(f"warning: summary failed: {e}", file=sys.stderr)
             analysis = {"summary": "_(summary failed)_", "chapters": []}
             exit_code = 1
@@ -104,7 +107,7 @@ def main(argv=None) -> int:
         if args.visual:
             try:
                 visual = visual_notes(args.source, backend="gemini-pro", client=client)
-            except StageError as e:
+            except Exception as e:
                 print(f"warning: visual notes failed: {e}", file=sys.stderr)
                 exit_code = 1
 

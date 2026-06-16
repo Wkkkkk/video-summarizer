@@ -56,3 +56,37 @@ def test_cli_missing_key_returns_exit_2(tmp_path, monkeypatch):
     monkeypatch.delenv("GEMINI_API_KEY", raising=False)
     code = cli.main(["movie.mp4", "--out", str(tmp_path)])
     assert code == 2
+
+
+def test_cli_unknown_summary_backend_returns_exit_2(tmp_path, monkeypatch):
+    from video_summarizer.errors import ConfigError as _CfgErr
+    monkeypatch.setattr(cli, "resolve_transcript",
+        lambda *a, **k: {"text": "hi", "segments": [], "source": "subtitles"})
+    monkeypatch.setattr(cli, "make_gemini_client", lambda: object())
+    monkeypatch.setattr(cli, "probe_duration", lambda *a, **k: "00:30")
+    monkeypatch.setattr(cli, "today_str", lambda: "2026-06-16")
+    def bad_summary(*a, **k): raise _CfgErr("unknown summary backend: bogus")
+    monkeypatch.setattr(cli, "summarize", bad_summary)
+    monkeypatch.setenv("GEMINI_API_KEY", "x")
+
+    code = cli.main(["movie.mp4", "--summary-backend", "bogus", "--out", str(tmp_path)])
+    assert code == 2
+
+
+def test_cli_summary_generic_error_writes_transcript_only(tmp_path, monkeypatch):
+    monkeypatch.setattr(cli, "resolve_transcript",
+        lambda *a, **k: {"text": "hi", "segments": [{"start": 0.0, "text": "hi"}], "source": "subtitles"})
+    monkeypatch.setattr(cli, "make_gemini_client", lambda: object())
+    monkeypatch.setattr(cli, "probe_duration", lambda *a, **k: "00:30")
+    monkeypatch.setattr(cli, "today_str", lambda: "2026-06-16")
+    def boom_summary(*a, **k): raise RuntimeError("sdk exploded")
+    monkeypatch.setattr(cli, "summarize", boom_summary)
+    monkeypatch.setenv("GEMINI_API_KEY", "x")
+
+    code = cli.main(["movie.mp4", "--out", str(tmp_path)])
+    assert code == 1
+    files = list(tmp_path.glob("*.md"))
+    assert len(files) == 1
+    text = files[0].read_text()
+    assert "_(summary failed)_" in text
+    assert "## Transcript" in text

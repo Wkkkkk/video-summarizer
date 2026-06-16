@@ -45,21 +45,28 @@ def _wait_until_active(client, uploaded, sleep_fn, timeout: int):
 def _gemini_pro_backend(video_path: str, client, media_resolution: str = "low",
                         sleep_fn=time.sleep, active_timeout: int = _ACTIVE_TIMEOUT_SECONDS) -> dict:
     uploaded = client.files.upload(file=video_path)
-    uploaded = _wait_until_active(client, uploaded, sleep_fn, active_timeout)
-    config = None
-    if media_resolution == "low":
-        from google.genai import types
+    try:
+        uploaded = _wait_until_active(client, uploaded, sleep_fn, active_timeout)
+        config = None
+        if media_resolution == "low":
+            from google.genai import types
 
-        config = types.GenerateContentConfig(
-            media_resolution=types.MediaResolution.MEDIA_RESOLUTION_LOW,
+            config = types.GenerateContentConfig(
+                media_resolution=types.MediaResolution.MEDIA_RESOLUTION_LOW,
+            )
+        resp = client.models.generate_content(
+            model="gemini-2.5-pro",
+            contents=[uploaded, _PROMPT],
+            config=config,
         )
-    resp = client.models.generate_content(
-        model="gemini-2.5-pro",
-        contents=[uploaded, _PROMPT],
-        config=config,
-    )
-    notes = [line.strip("-• ").strip() for line in resp.text.splitlines() if line.strip()]
-    return {"notes": notes}
+        notes = [line.strip("-• ").strip() for line in resp.text.splitlines() if line.strip()]
+        return {"notes": notes}
+    finally:
+        # Files API copies linger ~48h; remove ours regardless of outcome.
+        try:
+            client.files.delete(name=uploaded.name)
+        except Exception:
+            pass
 
 
 VISUALIZERS = {"gemini-pro": _gemini_pro_backend}

@@ -123,6 +123,34 @@ def test_gemini_pro_backend_waits_until_active():
     assert len(sleeps) == 2  # slept before each poll
 
 
+def test_gemini_pro_backend_deletes_uploaded_file_on_success():
+    from video_summarizer.visual import _gemini_pro_backend
+    captured = {}
+    deleted = []
+
+    client = _fake_client(captured)
+    client.files.delete = lambda name: deleted.append(name)
+    _gemini_pro_backend("movie.mp4", client=client, media_resolution="default")
+    assert deleted == ["files/abc"]  # uploaded handle cleaned up
+
+
+def test_gemini_pro_backend_deletes_uploaded_file_even_on_error():
+    from video_summarizer.visual import _gemini_pro_backend
+    captured = {}
+    deleted = []
+
+    client = _fake_client(captured)
+    client.files.delete = lambda name: deleted.append(name)
+
+    def boom(model, contents, config=None):
+        raise RuntimeError("generation failed")
+    client.models.generate_content = boom
+
+    with pytest.raises(RuntimeError):
+        _gemini_pro_backend("movie.mp4", client=client, media_resolution="default")
+    assert deleted == ["files/abc"]  # cleaned up despite the failure
+
+
 def test_gemini_pro_backend_failed_upload_raises_stage_error():
     from video_summarizer.visual import _gemini_pro_backend
     from video_summarizer.errors import StageError

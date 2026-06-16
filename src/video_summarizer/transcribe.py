@@ -14,6 +14,11 @@ import subprocess
 from .errors import ConfigError, StageError
 from .acquire import acquire_media
 
+# Bound each external tool so a hung process cannot block the run forever.
+_SUBTITLE_TIMEOUT_SECONDS = 300
+_FFMPEG_TIMEOUT_SECONDS = 1800
+_WHISPER_TIMEOUT_SECONDS = 3600
+
 _TS = re.compile(r"(?:(\d+):)?(\d{2}):(\d{2})[.,](\d{3})\s*-->")
 _TAG = re.compile(r"<[^>]+>")
 _DETECT = re.compile(r"auto-detected language:\s*([a-zA-Z]{2,3})")
@@ -64,7 +69,10 @@ def fetch_subtitles(url: str, workdir, run_fn=subprocess.run,
         "--sub-format", "vtt", "--sub-langs", f"{lang}.*,{lang}",
         "--skip-download", "-o", out_tmpl, "--", url,
     ]
-    run_fn(cmd, capture_output=True, text=True)
+    try:
+        run_fn(cmd, capture_output=True, text=True, timeout=_SUBTITLE_TIMEOUT_SECONDS)
+    except subprocess.TimeoutExpired:
+        return None  # optional fast path; fall back to Whisper
     vtts = sorted(glob.glob(os.path.join(str(workdir), "*.vtt")))
     if not vtts:
         return None
@@ -81,7 +89,10 @@ def extract_audio(video_path: str, workdir, run_fn=subprocess.run) -> str:
     """Extract 16kHz mono WAV from a video via ffmpeg. Returns the wav path."""
     out = os.path.join(str(workdir), "audio.wav")
     cmd = ["ffmpeg", "-y", "-i", video_path, "-ar", "16000", "-ac", "1", out]
-    proc = run_fn(cmd, capture_output=True, text=True)
+    try:
+        proc = run_fn(cmd, capture_output=True, text=True, timeout=_FFMPEG_TIMEOUT_SECONDS)
+    except subprocess.TimeoutExpired:
+        raise StageError(f"ffmpeg audio extraction timed out after {_FFMPEG_TIMEOUT_SECONDS}s")
     if getattr(proc, "returncode", 0) != 0:
         raise StageError("ffmpeg audio extraction failed")
     return out
@@ -98,13 +109,16 @@ def _whisper_cpp_backend(audio_path: str, run_fn, model: str,
     code = "auto" if not lang or lang.lower() == "auto" else lang.split("-")[0].lower()
     out_base = audio_path + ".out"
     cmd = ["whisper-cli", "-m", f"models/ggml-{model}.bin",
-           "-l", code, "-f", audio_path, "-otxt", "-of", out_base]
-    proc = run_fn(cmd, capture_output=True, text=True)
+           "-l", code, "-f", audio_path, "-osrt", "-of", out_base]
+    try:
+        proc = run_fn(cmd, capture_output=True, text=True, timeout=_WHISPER_TIMEOUT_SECONDS)
+    except subprocess.TimeoutExpired:
+        raise StageError(f"whisper.cpp transcription timed out after {_WHISPER_TIMEOUT_SECONDS}s")
     if getattr(proc, "returncode", 0) != 0:
         raise StageError("whisper.cpp transcription failed")
-    with open(out_base + ".txt", encoding="utf-8") as fh:
-        text = fh.read().strip()
-    result = {"segments": [{"start": 0.0, "text": text}], "text": text}
+    with open(out_base + ".srt", encoding="utf-8") as fh:
+        parsed = parse_vtt(fh.read())  # SRT shares VTT's cue/timestamp grammar
+    result = {"segments": parsed["segments"], "text": parsed["text"]}
     if code != "auto":
         result["lang"] = code
     else:

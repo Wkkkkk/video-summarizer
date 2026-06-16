@@ -42,6 +42,21 @@ def test_render_markdown_empty_lists_show_none():
     assert "## Chapters\n_(none)_" in md
 
 
+def test_render_markdown_tolerates_chapter_missing_keys():
+    # The summary schema does not mark chapter time/title required, so the model
+    # may return a chapter missing a key. Render must not crash a good run.
+    md = render_markdown(
+        title="Talk", source="movie.mp4", duration="01:00", date="2026-06-16",
+        transcript={"text": "hi", "segments": [], "source": "whisper:small"},
+        analysis={"tldr": "s", "key_points": [], "takeaways": [],
+                  "chapters": [{"title": "No time"}, {"time": "01:00"}, {}]},
+        visual=None,
+    )
+    assert "## Chapters" in md
+    assert "No time" in md          # chapter with only a title still renders
+    assert "01:00" in md            # chapter with only a time still renders
+
+
 def test_render_markdown_with_visual_includes_section():
     md = render_markdown(
         title="Talk", source="movie.mp4", duration="01:00", date="2026-06-16",

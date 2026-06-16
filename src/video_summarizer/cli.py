@@ -13,7 +13,7 @@ import tempfile
 
 from .acquire import acquire_media
 from .errors import ConfigError, StageError
-from .render import render_markdown, slugify
+from .render import render_markdown, slugify, unique_path
 from .summarize import summarize
 from .transcribe import resolve_transcript
 from .visual import visual_notes
@@ -139,7 +139,7 @@ def main(argv=None) -> int:
             transcript=transcript, analysis=analysis, visual=visual)
 
         os.makedirs(args.out, exist_ok=True)
-        out_path = os.path.join(args.out, f"{slugify(title)}.md")
+        out_path = unique_path(args.out, slugify(title))
         with open(out_path, "w", encoding="utf-8") as fh:
             fh.write(md)
         print(out_path)

@@ -1,12 +1,31 @@
 """Assemble the final markdown document and compute the output filename."""
 
+import os
 import re
+
+_MAX_SLUG_LEN = 80
 
 
 def slugify(title: str) -> str:
-    s = title.lower()
-    s = re.sub(r"[^a-z0-9]+", "-", s)
-    return s.strip("-") or "untitled"
+    """Lowercase, collapse punctuation/whitespace runs to single hyphens, cap
+    length. Unicode letters/digits are preserved so non-English titles (the tool
+    transcribes non-English audio) keep a meaningful name instead of "untitled"."""
+    s = re.sub(r"[^\w]+", "-", title.strip().lower(), flags=re.UNICODE)
+    s = s.strip("-")
+    if len(s) > _MAX_SLUG_LEN:
+        s = s[:_MAX_SLUG_LEN].rstrip("-")
+    return s or "untitled"
+
+
+def unique_path(out_dir: str, slug: str, ext: str = ".md") -> str:
+    """Path for `slug+ext` in `out_dir` that does not yet exist, appending
+    `-2`, `-3`, … only on collision so an earlier analysis is never overwritten."""
+    candidate = os.path.join(out_dir, f"{slug}{ext}")
+    n = 2
+    while os.path.exists(candidate):
+        candidate = os.path.join(out_dir, f"{slug}-{n}{ext}")
+        n += 1
+    return candidate
 
 
 def _fmt_seconds(secs: float) -> str:

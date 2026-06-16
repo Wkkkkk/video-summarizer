@@ -1,4 +1,6 @@
-from video_summarizer.render import slugify, render_markdown
+import os
+
+from video_summarizer.render import slugify, unique_path, render_markdown
 
 
 def test_slugify_ascii_lowercase_hyphen():
@@ -6,9 +8,34 @@ def test_slugify_ascii_lowercase_hyphen():
     assert slugify("  spaces   and--dashes ") == "spaces-and-dashes"
 
 
-def test_slugify_falls_back_to_untitled_for_non_ascii():
-    assert slugify("日本語のタイトル") == "untitled"
+def test_slugify_preserves_unicode_titles():
+    # Non-Latin scripts are kept (the tool transcribes non-English audio), with
+    # punctuation/whitespace collapsed to hyphens — not flattened to "untitled".
+    assert slugify("深度学习教程 第一讲") == "深度学习教程-第一讲"
+    assert slugify("日本語のタイトル") == "日本語のタイトル"
+    assert slugify("Émile — café résumé") == "émile-café-résumé"
+
+
+def test_slugify_falls_back_to_untitled_when_empty():
     assert slugify("!!!") == "untitled"
+    assert slugify("   ") == "untitled"
+
+
+def test_slugify_caps_length():
+    slug = slugify("word " * 100)
+    assert len(slug) <= 80
+    assert not slug.endswith("-")
+
+
+def test_unique_path_returns_plain_name_when_free(tmp_path):
+    assert unique_path(str(tmp_path), "talk") == os.path.join(str(tmp_path), "talk.md")
+
+
+def test_unique_path_counts_up_to_avoid_overwrite(tmp_path):
+    open(os.path.join(str(tmp_path), "talk.md"), "w").close()
+    assert unique_path(str(tmp_path), "talk") == os.path.join(str(tmp_path), "talk-2.md")
+    open(os.path.join(str(tmp_path), "talk-2.md"), "w").close()
+    assert unique_path(str(tmp_path), "talk") == os.path.join(str(tmp_path), "talk-3.md")
 
 
 def test_render_markdown_without_visual_omits_section():

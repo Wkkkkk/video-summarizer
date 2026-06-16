@@ -49,8 +49,10 @@ def test_acquire_url_builds_ytdlp_command(tmp_path):
     acquire_media("https://r2.example/x.mp4", is_url=True, workdir=tmp_path, run_fn=fake_run)
     cmd = calls[0]
     assert cmd[0] == "yt-dlp"
-    assert "https://r2.example/x.mp4" in cmd
-    assert "-f" in cmd  # a format selector is passed
+    fi = cmd.index("-f")
+    assert cmd[fi + 1] == "b/bv*+ba"          # exact format selector
+    assert "--" in cmd                          # arg/URL separator present
+    assert cmd[-1] == "https://r2.example/x.mp4"  # URL passed last, after --
 
 
 def test_acquire_raises_stage_error_on_nonzero_exit(tmp_path):

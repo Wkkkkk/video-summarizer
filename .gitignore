@@ -1,0 +1,7 @@
+.env
+analyses/
+__pycache__/
+*.egg-info/
+*.pyc
+*.wav
+.venv/

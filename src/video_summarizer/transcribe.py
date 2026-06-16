@@ -5,8 +5,11 @@ All subprocess calls go through an injected `run_fn` (default subprocess.run)
 so tests never invoke real binaries.
 """
 
+import glob
 import html
+import os
 import re
+import subprocess
 
 _TS = re.compile(r"(?:(\d+):)?(\d{2}):(\d{2})[.,](\d{3})\s*-->")
 _TAG = re.compile(r"<[^>]+>")
@@ -36,3 +39,24 @@ def parse_vtt(text: str) -> dict:
         else:
             i += 1
     return {"segments": segments, "text": " ".join(s["text"] for s in segments)}
+
+
+def fetch_subtitles(url: str, workdir, run_fn=subprocess.run) -> dict | None:
+    """Try to download subtitles/auto-captions for `url`. Returns a transcript
+    dict (with source='subtitles') or None if no subtitle track was produced."""
+    out_tmpl = os.path.join(str(workdir), "sub")
+    cmd = [
+        "yt-dlp", "--write-subs", "--write-auto-subs",
+        "--sub-format", "vtt", "--sub-langs", "en.*,en",
+        "--skip-download", "-o", out_tmpl, "--", url,
+    ]
+    run_fn(cmd, capture_output=True, text=True)
+    vtts = sorted(glob.glob(os.path.join(str(workdir), "*.vtt")))
+    if not vtts:
+        return None
+    with open(vtts[0], encoding="utf-8") as fh:
+        parsed = parse_vtt(fh.read())
+    if not parsed["text"]:
+        return None
+    parsed["source"] = "subtitles"
+    return parsed

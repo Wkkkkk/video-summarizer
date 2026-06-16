@@ -99,6 +99,10 @@ yt-dlp.
 **Output:** if subtitles exist, `transcript-source: subtitles` and the summary
 follows the subtitle language; otherwise `whisper:<model>`.
 
+> Quote the URL with **plain** double quotes — don't backslash-escape `?` or `=`.
+> `"…/watch\?v\=ID"` passes literal backslashes to yt-dlp, which then can't parse
+> the video and fails with `no media file produced`. Use `"…/watch?v=ID"`.
+
 ---
 
 ## Inspect the result

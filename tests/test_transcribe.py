@@ -1,3 +1,5 @@
+import types
+
 from video_summarizer.transcribe import parse_vtt
 
 VTT = """WEBVTT
@@ -65,7 +67,12 @@ def test_fetch_subtitles_returns_none_when_no_vtt(tmp_path):
     assert fetch_subtitles("https://example.com/v", tmp_path, run_fn=fake_run) is None
 
 
-from video_summarizer.transcribe import extract_audio, WHISPER_BACKENDS, transcribe_audio
+from video_summarizer.transcribe import (
+    extract_audio,
+    WHISPER_BACKENDS,
+    transcribe_audio,
+    _whisper_cpp_backend,
+)
 
 
 def test_extract_audio_builds_ffmpeg_command(tmp_path):
@@ -213,3 +220,53 @@ def test_resolve_subtitles_branch_skips_acquire(tmp_path):
         fetch_fn=subs, acquire_fn=boom,
     )
     assert result["text"] == "s"
+
+
+def test_whisper_backend_explicit_lang_normalizes_subtag(tmp_path):
+    audio = str(tmp_path / "audio.wav")
+    captured = {}
+
+    def run_fn(cmd, capture_output=False, text=True):
+        captured["cmd"] = cmd
+        of = cmd[cmd.index("-of") + 1]
+        with open(of + ".txt", "w", encoding="utf-8") as fh:
+            fh.write("你好")
+        return types.SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    result = _whisper_cpp_backend(audio, run_fn=run_fn, model="base", lang="zh-Hans")
+    cmd = captured["cmd"]
+    assert cmd[cmd.index("-l") + 1] == "zh"
+    assert result["lang"] == "zh"
+    assert result["text"] == "你好"
+
+
+def test_whisper_backend_auto_parses_detected_language(tmp_path):
+    audio = str(tmp_path / "audio.wav")
+    captured = {}
+
+    def run_fn(cmd, capture_output=False, text=True):
+        captured["cmd"] = cmd
+        of = cmd[cmd.index("-of") + 1]
+        with open(of + ".txt", "w", encoding="utf-8") as fh:
+            fh.write("こんにちは")
+        return types.SimpleNamespace(
+            returncode=0, stdout="",
+            stderr="whisper_full_with_state: auto-detected language: ja (p = 0.98)")
+
+    result = _whisper_cpp_backend(audio, run_fn=run_fn, model="base", lang="auto")
+    cmd = captured["cmd"]
+    assert cmd[cmd.index("-l") + 1] == "auto"
+    assert result["lang"] == "ja"
+
+
+def test_whisper_backend_auto_parse_miss_leaves_lang_unset(tmp_path):
+    audio = str(tmp_path / "audio.wav")
+
+    def run_fn(cmd, capture_output=False, text=True):
+        of = cmd[cmd.index("-of") + 1]
+        with open(of + ".txt", "w", encoding="utf-8") as fh:
+            fh.write("hello")
+        return types.SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    result = _whisper_cpp_backend(audio, run_fn=run_fn, model="base", lang="auto")
+    assert "lang" not in result

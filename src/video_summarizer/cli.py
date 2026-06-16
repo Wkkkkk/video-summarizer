@@ -58,7 +58,9 @@ def main(argv=None) -> int:
     p.add_argument("--visual", action="store_true", help="run opt-in Gemini Pro visual pass")
     p.add_argument("--out", default="./analyses", help="output directory")
     p.add_argument("--whisper-backend", default="whisper.cpp")
-    p.add_argument("--summary-backend", default="gemini-flash")
+    p.add_argument("--summary-backend", default="gemini")
+    p.add_argument("--summary-model", default="gemini-2.5-pro",
+                   help="model for the summary backend (e.g. gemini-flash-latest for cheap)")
     p.add_argument("--whisper-model", default="small")
     p.add_argument("--lang", default=None,
                    help="transcription/summary language; omit to auto-detect")
@@ -108,13 +110,15 @@ def main(argv=None) -> int:
 
         try:
             analysis = summarize(transcript["text"], backend=args.summary_backend,
-                                 client=client, lang=transcript.get("lang", lang))
+                                 client=client, lang=transcript.get("lang", lang),
+                                 model=args.summary_model)
         except ConfigError as e:
             print(f"error: {e}", file=sys.stderr)
             return 2
         except Exception as e:
             print(f"warning: summary failed: {e}", file=sys.stderr)
-            analysis = {"summary": "_(summary failed)_", "chapters": []}
+            analysis = {"tldr": "_(summary failed)_", "key_points": [],
+                        "takeaways": [], "chapters": []}
             exit_code = 1
 
         visual = None

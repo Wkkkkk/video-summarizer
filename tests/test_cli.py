@@ -193,3 +193,46 @@ def test_cli_downloads_media_once_for_whisper_and_visual(tmp_path, monkeypatch):
     assert code == 0
     assert calls["n"] == 1                          # downloaded exactly once
     assert captured["video_path"] == "/local/media.mp4"  # visual got the local path
+
+
+def test_cli_threads_summary_model(tmp_path, monkeypatch):
+    captured = {}
+
+    def fake_summary(transcript_text, backend, client, lang, model, **k):
+        captured["model"] = model
+        captured["backend"] = backend
+        return {"tldr": "s", "key_points": [], "takeaways": [], "chapters": []}
+
+    monkeypatch.setattr(cli, "resolve_transcript",
+        lambda *a, **k: {"text": "hi", "segments": [], "source": "subtitles"})
+    monkeypatch.setattr(cli, "summarize", fake_summary)
+    monkeypatch.setattr(cli, "make_gemini_client", lambda: object())
+    monkeypatch.setattr(cli, "probe_duration", lambda *a, **k: "00:30")
+    monkeypatch.setattr(cli, "today_str", lambda: "2026-06-16")
+    monkeypatch.setenv("GEMINI_API_KEY", "x")
+
+    code = cli.main(["movie.mp4", "--summary-model", "gemini-flash-latest",
+                     "--out", str(tmp_path)])
+    assert code == 0
+    assert captured["model"] == "gemini-flash-latest"
+    assert captured["backend"] == "gemini"   # new default backend key
+
+
+def test_cli_summary_model_defaults_to_pro(tmp_path, monkeypatch):
+    captured = {}
+
+    def fake_summary(transcript_text, backend, client, lang, model, **k):
+        captured["model"] = model
+        return {"tldr": "s", "key_points": [], "takeaways": [], "chapters": []}
+
+    monkeypatch.setattr(cli, "resolve_transcript",
+        lambda *a, **k: {"text": "hi", "segments": [], "source": "subtitles"})
+    monkeypatch.setattr(cli, "summarize", fake_summary)
+    monkeypatch.setattr(cli, "make_gemini_client", lambda: object())
+    monkeypatch.setattr(cli, "probe_duration", lambda *a, **k: "00:30")
+    monkeypatch.setattr(cli, "today_str", lambda: "2026-06-16")
+    monkeypatch.setenv("GEMINI_API_KEY", "x")
+
+    code = cli.main(["movie.mp4", "--out", str(tmp_path)])
+    assert code == 0
+    assert captured["model"] == "gemini-2.5-pro"

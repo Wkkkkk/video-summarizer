@@ -11,6 +11,11 @@ notes. Read the markdown to summarize and ask questions about the video.
 2. **Summary + chapters** — a cheap text LLM (`gemini-flash`) over the transcript.
 3. **Visual notes** — opt-in (`--visual`) Gemini Pro video pass. Off by default.
 
+The summary and chapters are written in the **transcript's own language**: when
+subtitles are used, that subtitle language wins; otherwise the `--lang` hint
+applies (default `en`). Pass `--lang` to prefer a subtitle language and set the
+fallback (e.g. `--lang zh` for a Chinese video with no detectable subtitles).
+
 ## Install
 
 ```bash

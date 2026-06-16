@@ -12,8 +12,14 @@ from .errors import ConfigError, StageError
 _PROMPT = (
     "You are summarizing a video transcript. Respond with ONLY a JSON object "
     'with keys "summary" (a 3-5 sentence string) and "chapters" (a list of '
-    '{"time": "MM:SS", "title": string}). Transcript follows:\n\n'
+    '{"time": "MM:SS", "title": string}).'
 )
+
+
+def _lang_instruction(lang: str) -> str:
+    """Tell the model to write its output in the transcript's language."""
+    return (f' Write the "summary" and every chapter "title" in this language '
+            f"(BCP-47 code): {lang}. Transcript follows:\n\n")
 
 
 def _extract_json(text: str) -> dict:
@@ -31,7 +37,7 @@ def _extract_json(text: str) -> dict:
 def _gemini_flash_backend(transcript_text: str, client, lang: str) -> dict:
     resp = client.models.generate_content(
         model="gemini-flash-latest",
-        contents=_PROMPT + transcript_text,
+        contents=_PROMPT + _lang_instruction(lang) + transcript_text,
     )
     data = _extract_json(resp.text)
     return {"summary": data.get("summary", ""), "chapters": data.get("chapters", [])}

@@ -43,13 +43,23 @@ def parse_vtt(text: str) -> dict:
     return {"segments": segments, "text": " ".join(s["text"] for s in segments)}
 
 
-def fetch_subtitles(url: str, workdir, run_fn=subprocess.run) -> dict | None:
-    """Try to download subtitles/auto-captions for `url`. Returns a transcript
-    dict (with source='subtitles') or None if no subtitle track was produced."""
+def _lang_from_vtt(path: str) -> str:
+    """Extract the language code from a yt-dlp subtitle filename like
+    'sub.en.vtt' or 'sub.zh-Hans.vtt'. Defaults to 'en'."""
+    parts = os.path.basename(path).split(".")
+    return parts[-2] if len(parts) >= 3 else "en"
+
+
+def fetch_subtitles(url: str, workdir, run_fn=subprocess.run,
+                    lang: str = "en") -> dict | None:
+    """Try to download subtitles/auto-captions for `url` in the preferred
+    `lang` (and its regional variants). Returns a transcript dict
+    (source='subtitles', lang=<actual subtitle language>) or None if no
+    subtitle track was produced."""
     out_tmpl = os.path.join(str(workdir), "sub")
     cmd = [
         "yt-dlp", "--write-subs", "--write-auto-subs",
-        "--sub-format", "vtt", "--sub-langs", "en.*,en",
+        "--sub-format", "vtt", "--sub-langs", f"{lang}.*,{lang}",
         "--skip-download", "-o", out_tmpl, "--", url,
     ]
     run_fn(cmd, capture_output=True, text=True)
@@ -61,6 +71,7 @@ def fetch_subtitles(url: str, workdir, run_fn=subprocess.run) -> dict | None:
     if not parsed["text"]:
         return None
     parsed["source"] = "subtitles"
+    parsed["lang"] = _lang_from_vtt(vtts[0])
     return parsed
 
 
@@ -103,13 +114,19 @@ def transcribe_audio(audio_path: str, backend: str, model: str,
 
 
 def resolve_transcript(source: str, is_url: bool, workdir, whisper_backend: str,
-                       model: str, run_fn=subprocess.run,
+                       model: str, lang: str = "en", run_fn=subprocess.run,
                        fetch_fn=fetch_subtitles, extract_fn=extract_audio,
                        transcribe_fn=transcribe_audio) -> dict:
-    """Cheapest source first: subtitles (URLs only) -> ffmpeg + Whisper."""
+    """Cheapest source first: subtitles (URLs only) -> ffmpeg + Whisper.
+
+    The returned transcript carries a 'lang' field: the actual subtitle
+    language when subtitles are used, otherwise the requested `lang` hint
+    (default 'en'). Downstream summary/analysis follows this language."""
     if is_url:
-        subs = fetch_fn(source, workdir, run_fn=run_fn)
+        subs = fetch_fn(source, workdir, run_fn=run_fn, lang=lang)
         if subs is not None:
             return subs
     audio = extract_fn(source, workdir, run_fn=run_fn)
-    return transcribe_fn(audio, backend=whisper_backend, model=model, run_fn=run_fn)
+    result = transcribe_fn(audio, backend=whisper_backend, model=model, run_fn=run_fn)
+    result.setdefault("lang", lang)
+    return result

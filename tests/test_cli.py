@@ -90,3 +90,25 @@ def test_cli_summary_generic_error_writes_transcript_only(tmp_path, monkeypatch)
     text = files[0].read_text()
     assert "_(summary failed)_" in text
     assert "## Transcript" in text
+
+
+def test_cli_summary_language_follows_transcript(tmp_path, monkeypatch):
+    # transcript reports zh-Hans (e.g. from Chinese subtitles); the summary
+    # stage must be asked to write in that language, not the default --lang.
+    monkeypatch.setattr(cli, "resolve_transcript",
+        lambda *a, **k: {"text": "ni hao", "segments": [], "source": "subtitles", "lang": "zh-Hans"})
+    captured = {}
+
+    def fake_summary(transcript_text, backend, client, lang, **k):
+        captured["lang"] = lang
+        return {"summary": "s", "chapters": []}
+
+    monkeypatch.setattr(cli, "summarize", fake_summary)
+    monkeypatch.setattr(cli, "make_gemini_client", lambda: object())
+    monkeypatch.setattr(cli, "probe_duration", lambda *a, **k: "00:30")
+    monkeypatch.setattr(cli, "today_str", lambda: "2026-06-16")
+    monkeypatch.setenv("GEMINI_API_KEY", "x")
+
+    code = cli.main(["https://example.com/v", "--out", str(tmp_path)])
+    assert code == 0
+    assert captured["lang"] == "zh-Hans"

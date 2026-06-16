@@ -112,3 +112,37 @@ def test_cli_summary_language_follows_transcript(tmp_path, monkeypatch):
     code = cli.main(["https://example.com/v", "--out", str(tmp_path)])
     assert code == 0
     assert captured["lang"] == "zh-Hans"
+
+
+def test_cli_downloads_media_once_for_whisper_and_visual(tmp_path, monkeypatch):
+    # A URL source with no subtitles + --visual: both the Whisper branch and the
+    # visual stage need the media, but it must be downloaded only once and the
+    # visual stage must receive the LOCAL path, not the URL.
+    calls = {"n": 0}
+
+    def fake_acquire(source, is_url, workdir, run_fn=None):
+        calls["n"] += 1
+        return "/local/media.mp4"
+    monkeypatch.setattr(cli, "acquire_media", fake_acquire)
+
+    def fake_resolve(*a, **k):
+        media = k["acquire_fn"]()  # simulate the Whisper branch acquiring media
+        return {"text": "hi", "segments": [], "source": "whisper:base.en", "lang": "en"}
+    monkeypatch.setattr(cli, "resolve_transcript", fake_resolve)
+
+    captured = {}
+
+    def fake_visual(video_path, backend, client):
+        captured["video_path"] = video_path
+        return {"notes": ["onscreen"]}
+    monkeypatch.setattr(cli, "visual_notes", fake_visual)
+    monkeypatch.setattr(cli, "summarize", lambda *a, **k: {"summary": "s", "chapters": []})
+    monkeypatch.setattr(cli, "make_gemini_client", lambda: object())
+    monkeypatch.setattr(cli, "probe_duration", lambda *a, **k: "00:30")
+    monkeypatch.setattr(cli, "today_str", lambda: "2026-06-16")
+    monkeypatch.setenv("GEMINI_API_KEY", "x")
+
+    code = cli.main(["https://r2.example/x.mp4", "--visual", "--out", str(tmp_path)])
+    assert code == 0
+    assert calls["n"] == 1                          # downloaded exactly once
+    assert captured["video_path"] == "/local/media.mp4"  # visual got the local path

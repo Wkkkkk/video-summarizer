@@ -11,6 +11,7 @@ import subprocess
 import sys
 import tempfile
 
+from .acquire import acquire_media
 from .errors import ConfigError, StageError
 from .render import render_markdown, slugify
 from .summarize import summarize
@@ -81,11 +82,18 @@ def main(argv=None) -> int:
 
     exit_code = 0
     with tempfile.TemporaryDirectory() as workdir:
+        _media = {}
+
+        def get_media():
+            if "path" not in _media:
+                _media["path"] = acquire_media(args.source, is_url, workdir)
+            return _media["path"]
+
         try:
             transcript = resolve_transcript(
                 args.source, is_url=is_url, workdir=workdir,
                 whisper_backend=args.whisper_backend, model=args.whisper_model,
-                lang=args.lang)
+                lang=args.lang, acquire_fn=get_media)
         except ConfigError as e:
             print(f"error: {e}", file=sys.stderr)
             return 2
@@ -107,7 +115,7 @@ def main(argv=None) -> int:
         visual = None
         if args.visual:
             try:
-                visual = visual_notes(args.source, backend="gemini-pro", client=client)
+                visual = visual_notes(get_media(), backend="gemini-pro", client=client)
             except Exception as e:
                 print(f"warning: visual notes failed: {e}", file=sys.stderr)
                 exit_code = 1

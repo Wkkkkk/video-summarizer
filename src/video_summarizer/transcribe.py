@@ -119,27 +119,31 @@ WHISPER_BACKENDS = {"whisper.cpp": _whisper_cpp_backend}
 
 
 def transcribe_audio(audio_path: str, backend: str, model: str,
-                     registry=None, run_fn=subprocess.run) -> dict:
+                     lang: str = "auto", registry=None,
+                     run_fn=subprocess.run) -> dict:
     """Dispatch to a Whisper backend; stamps source='whisper:<model>'."""
     registry = WHISPER_BACKENDS if registry is None else registry
     fn = registry.get(backend)
     if fn is None:
         raise ConfigError(f"unknown whisper backend: {backend}")
-    result = fn(audio_path, run_fn=run_fn, model=model)
+    result = fn(audio_path, run_fn=run_fn, model=model, lang=lang)
     result["source"] = f"whisper:{model}"
     return result
 
 
 def resolve_transcript(source: str, is_url: bool, workdir, whisper_backend: str,
-                       model: str, lang: str = "en", run_fn=subprocess.run,
-                       fetch_fn=fetch_subtitles, acquire_fn=None,
-                       extract_fn=extract_audio, transcribe_fn=transcribe_audio) -> dict:
+                       model: str, lang: str = "en", whisper_lang: str = "auto",
+                       run_fn=subprocess.run, fetch_fn=fetch_subtitles,
+                       acquire_fn=None, extract_fn=extract_audio,
+                       transcribe_fn=transcribe_audio) -> dict:
     """Cheapest source first: subtitles (URLs only) -> acquire media -> Whisper.
 
-    `acquire_fn` is a zero-arg callable returning a local media path; it defaults
-    to acquiring `source` via `acquire_media`. The CLI injects a memoized closure
-    so the download is shared with the visual stage. The returned transcript
-    carries a 'lang' field (actual subtitle language, else the `lang` hint)."""
+    `lang` is the subtitle preference and the summary-language fallback.
+    `whisper_lang` is the transcription language ("auto" to let whisper detect,
+    else a language code). `acquire_fn` is a zero-arg callable returning a local
+    media path; it defaults to acquiring `source` via `acquire_media`. The
+    returned transcript carries a 'lang' field: the subtitle language, the
+    detected/explicit Whisper language, or the `lang` hint as a fallback."""
     if is_url:
         subs = fetch_fn(source, workdir, run_fn=run_fn, lang=lang)
         if subs is not None:
@@ -149,6 +153,7 @@ def resolve_transcript(source: str, is_url: bool, workdir, whisper_backend: str,
     else:
         media = acquire_fn()
     audio = extract_fn(media, workdir, run_fn=run_fn)
-    result = transcribe_fn(audio, backend=whisper_backend, model=model, run_fn=run_fn)
+    result = transcribe_fn(audio, backend=whisper_backend, model=model,
+                           lang=whisper_lang, run_fn=run_fn)
     result.setdefault("lang", lang)
     return result

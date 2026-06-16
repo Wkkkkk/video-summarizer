@@ -96,7 +96,7 @@ def test_default_whisper_backend_registered():
 
 
 def test_transcribe_audio_uses_selected_backend():
-    def fake_backend(audio_path, run_fn, model):
+    def fake_backend(audio_path, run_fn, model, lang="auto"):
         return {"segments": [{"start": 0.0, "text": "spoken"}], "text": "spoken"}
 
     result = transcribe_audio(
@@ -125,7 +125,7 @@ def test_resolve_uses_subtitles_when_available(tmp_path):
 def test_resolve_falls_back_to_whisper_when_no_subs(tmp_path):
     def subs(url, workdir, run_fn, lang): return None
     def extract(video, workdir, run_fn): return "a.wav"
-    def whisper(audio, backend, model, run_fn): return {"text": "from whisper", "segments": [], "source": "whisper:small"}
+    def whisper(audio, backend, model, lang, run_fn): return {"text": "from whisper", "segments": [], "source": "whisper:small"}
 
     result = resolve_transcript(
         "https://example.com/v", is_url=True, workdir=tmp_path,
@@ -139,7 +139,7 @@ def test_resolve_falls_back_to_whisper_when_no_subs(tmp_path):
 def test_resolve_local_file_skips_subtitle_fetch(tmp_path):
     def subs(*a, **k): raise AssertionError("local files have no subtitles to fetch")
     def extract(video, workdir, run_fn): return "a.wav"
-    def whisper(audio, backend, model, run_fn): return {"text": "local", "segments": [], "source": "whisper:small"}
+    def whisper(audio, backend, model, lang, run_fn): return {"text": "local", "segments": [], "source": "whisper:small"}
 
     result = resolve_transcript(
         "/path/movie.mp4", is_url=False, workdir=tmp_path,
@@ -181,7 +181,7 @@ def test_fetch_subtitles_detects_language_from_filename(tmp_path):
 def test_resolve_whisper_path_stamps_lang_hint(tmp_path):
     def subs(url, workdir, run_fn, lang): return None
     def extract(video, workdir, run_fn): return "a.wav"
-    def whisper(audio, backend, model, run_fn): return {"text": "x", "segments": [], "source": "whisper:small"}
+    def whisper(audio, backend, model, lang, run_fn): return {"text": "x", "segments": [], "source": "whisper:small"}
 
     result = resolve_transcript(
         "https://example.com/v", is_url=True, workdir=tmp_path,
@@ -200,7 +200,7 @@ def test_resolve_whisper_branch_calls_acquire(tmp_path):
     def extract(video, workdir, run_fn):
         assert video == "/local/media.mp4"  # extract receives the acquired path
         return "a.wav"
-    def whisper(audio, backend, model, run_fn): return {"text": "w", "segments": [], "source": "whisper:small"}
+    def whisper(audio, backend, model, lang, run_fn): return {"text": "w", "segments": [], "source": "whisper:small"}
 
     resolve_transcript(
         "https://example.com/v", is_url=True, workdir=tmp_path,
@@ -270,3 +270,63 @@ def test_whisper_backend_auto_parse_miss_leaves_lang_unset(tmp_path):
 
     result = _whisper_cpp_backend(audio, run_fn=run_fn, model="base", lang="auto")
     assert "lang" not in result
+
+
+def test_transcribe_audio_threads_lang_to_backend():
+    captured = {}
+
+    def fake_backend(audio_path, run_fn, model, lang):
+        captured["lang"] = lang
+        return {"segments": [], "text": "x"}
+
+    transcribe_audio("a.wav", backend="fake", model="base", lang="zh",
+                     registry={"fake": fake_backend})
+    assert captured["lang"] == "zh"
+
+
+def test_resolve_transcript_passes_whisper_lang_and_keeps_detected(tmp_path):
+    captured = {}
+
+    def fetch_fn(*a, **k):
+        return None
+
+    def acquire_fn():
+        return "media.mp4"
+
+    def extract_fn(media, workdir, run_fn):
+        return "audio.wav"
+
+    def transcribe_fn(audio, backend, model, lang, run_fn):
+        captured["lang"] = lang
+        return {"segments": [], "text": "你好", "lang": "zh"}
+
+    result = resolve_transcript(
+        "http://x/v.mp4", is_url=True, workdir=str(tmp_path),
+        whisper_backend="whisper.cpp", model="base",
+        lang="en", whisper_lang="auto",
+        fetch_fn=fetch_fn, acquire_fn=acquire_fn,
+        extract_fn=extract_fn, transcribe_fn=transcribe_fn)
+    assert captured["lang"] == "auto"
+    assert result["lang"] == "zh"          # detected wins over the "en" hint
+
+
+def test_resolve_transcript_falls_back_to_lang_hint_when_undetected(tmp_path):
+    def fetch_fn(*a, **k):
+        return None
+
+    def acquire_fn():
+        return "media.mp4"
+
+    def extract_fn(media, workdir, run_fn):
+        return "audio.wav"
+
+    def transcribe_fn(audio, backend, model, lang, run_fn):
+        return {"segments": [], "text": "hello"}   # backend reported no lang
+
+    result = resolve_transcript(
+        "http://x/v.mp4", is_url=True, workdir=str(tmp_path),
+        whisper_backend="whisper.cpp", model="base",
+        lang="en", whisper_lang="auto",
+        fetch_fn=fetch_fn, acquire_fn=acquire_fn,
+        extract_fn=extract_fn, transcribe_fn=transcribe_fn)
+    assert result["lang"] == "en"

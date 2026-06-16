@@ -98,3 +98,44 @@ def test_transcribe_audio_uses_selected_backend():
     )
     assert result["text"] == "spoken"
     assert result["source"] == "whisper:small"
+
+
+from video_summarizer.transcribe import resolve_transcript
+
+
+def test_resolve_uses_subtitles_when_available(tmp_path):
+    def subs(url, workdir, run_fn): return {"text": "from subs", "segments": [], "source": "subtitles"}
+    def boom(*a, **k): raise AssertionError("whisper should not run when subs exist")
+
+    result = resolve_transcript(
+        "https://example.com/v", is_url=True, workdir=tmp_path,
+        whisper_backend="whisper.cpp", model="small",
+        fetch_fn=subs, extract_fn=boom, transcribe_fn=boom,
+    )
+    assert result["text"] == "from subs"
+
+
+def test_resolve_falls_back_to_whisper_when_no_subs(tmp_path):
+    def subs(url, workdir, run_fn): return None
+    def extract(video, workdir, run_fn): return "a.wav"
+    def whisper(audio, backend, model, run_fn): return {"text": "from whisper", "segments": [], "source": "whisper:small"}
+
+    result = resolve_transcript(
+        "https://example.com/v", is_url=True, workdir=tmp_path,
+        whisper_backend="whisper.cpp", model="small",
+        fetch_fn=subs, extract_fn=extract, transcribe_fn=whisper,
+    )
+    assert result["text"] == "from whisper"
+
+
+def test_resolve_local_file_skips_subtitle_fetch(tmp_path):
+    def subs(*a, **k): raise AssertionError("local files have no subtitles to fetch")
+    def extract(video, workdir, run_fn): return "a.wav"
+    def whisper(audio, backend, model, run_fn): return {"text": "local", "segments": [], "source": "whisper:small"}
+
+    result = resolve_transcript(
+        "/path/movie.mp4", is_url=False, workdir=tmp_path,
+        whisper_backend="whisper.cpp", model="small",
+        fetch_fn=subs, extract_fn=extract, transcribe_fn=whisper,
+    )
+    assert result["text"] == "local"

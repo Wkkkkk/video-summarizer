@@ -100,3 +100,16 @@ def transcribe_audio(audio_path: str, backend: str, model: str,
     result = fn(audio_path, run_fn=run_fn, model=model)
     result["source"] = f"whisper:{model}"
     return result
+
+
+def resolve_transcript(source: str, is_url: bool, workdir, whisper_backend: str,
+                       model: str, run_fn=subprocess.run,
+                       fetch_fn=fetch_subtitles, extract_fn=extract_audio,
+                       transcribe_fn=transcribe_audio) -> dict:
+    """Cheapest source first: subtitles (URLs only) -> ffmpeg + Whisper."""
+    if is_url:
+        subs = fetch_fn(source, workdir, run_fn=run_fn)
+        if subs is not None:
+            return subs
+    audio = extract_fn(source, workdir, run_fn=run_fn)
+    return transcribe_fn(audio, backend=whisper_backend, model=model, run_fn=run_fn)

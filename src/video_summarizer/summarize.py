@@ -1,7 +1,8 @@
 """Stage 2: summary + chapters from transcript text via a pluggable text LLM.
 
-Backends take (transcript_text, client, lang) and return
-{'summary': str, 'chapters': [{'time': 'MM:SS', 'title': str}]}.
+Backends take (transcript_text, client, lang, model) and return
+{'tldr': str, 'key_points': [str], 'takeaways': [str],
+ 'chapters': [{'time': 'MM:SS', 'title': str}]}.
 The Gemini client is injected so tests never call the network.
 """
 
@@ -11,14 +12,36 @@ from .errors import ConfigError, StageError
 
 _PROMPT = (
     "You are summarizing a video transcript. Respond with ONLY a JSON object "
-    'with keys "summary" (a 3-5 sentence string) and "chapters" (a list of '
-    '{"time": "MM:SS", "title": string}).'
+    'with keys "tldr" (a 2-3 sentence overview string), "key_points" (a list of '
+    "strings covering the substantive points made), \"takeaways\" (a list of "
+    "strings with the actionable or memorable conclusions), and \"chapters\" (a "
+    'list of {"time": "MM:SS", "title": string}).'
 )
+
+SUMMARY_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "tldr": {"type": "string"},
+        "key_points": {"type": "array", "items": {"type": "string"}},
+        "takeaways": {"type": "array", "items": {"type": "string"}},
+        "chapters": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "time": {"type": "string"},
+                    "title": {"type": "string"},
+                },
+            },
+        },
+    },
+}
 
 
 def _lang_instruction(lang: str) -> str:
     """Tell the model to write its output in the transcript's language."""
-    return (f' Write the "summary" and every chapter "title" in this language '
+    return (' Write the "tldr", every "key_points" entry, every "takeaways" '
+            'entry, and every chapter "title" in this language '
             f"(BCP-47 code): {lang}. Transcript follows:\n\n")
 
 
@@ -34,22 +57,34 @@ def _extract_json(text: str) -> dict:
         raise StageError(f"summarizer returned invalid JSON: {e}") from e
 
 
-def _gemini_flash_backend(transcript_text: str, client, lang: str) -> dict:
+def _gemini_backend(transcript_text: str, client, lang: str,
+                    model: str = "gemini-2.5-pro") -> dict:
+    from google.genai import types
+
     resp = client.models.generate_content(
-        model="gemini-flash-latest",
+        model=model,
         contents=_PROMPT + _lang_instruction(lang) + transcript_text,
+        config=types.GenerateContentConfig(
+            response_mime_type="application/json",
+            response_schema=SUMMARY_SCHEMA,
+        ),
     )
     data = _extract_json(resp.text)
-    return {"summary": data.get("summary", ""), "chapters": data.get("chapters", [])}
+    return {
+        "tldr": data.get("tldr", ""),
+        "key_points": data.get("key_points", []),
+        "takeaways": data.get("takeaways", []),
+        "chapters": data.get("chapters", []),
+    }
 
 
-SUMMARIZERS = {"gemini-flash": _gemini_flash_backend}
+SUMMARIZERS = {"gemini": _gemini_backend}
 
 
 def summarize(transcript_text: str, backend: str, client, lang: str,
-              registry=None) -> dict:
+              model: str = "gemini-2.5-pro", registry=None) -> dict:
     registry = SUMMARIZERS if registry is None else registry
     fn = registry.get(backend)
     if fn is None:
         raise ConfigError(f"unknown summary backend: {backend}")
-    return fn(transcript_text, client=client, lang=lang)
+    return fn(transcript_text, client=client, lang=lang, model=model)

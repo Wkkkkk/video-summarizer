@@ -8,7 +8,9 @@ notes. Read the markdown to summarize and ask questions about the video.
 
 1. **Transcript** — reuse `yt-dlp` subtitles if present; else extract audio with
    `ffmpeg` and transcribe with Whisper (`whisper.cpp` by default).
-2. **Summary + chapters** — a cheap text LLM (`gemini-flash`) over the transcript.
+2. **Summary + chapters** — a structured pass (TL;DR + key points + takeaways +
+   chapters) over the transcript, by default `gemini-2.5-pro`. Override with
+   `--summary-model gemini-flash-latest` for a cheaper run.
 3. **Visual notes** — opt-in (`--visual`) Gemini Pro video pass. Off by default.
 
 The summary and chapters are written in the **transcript's own language**: when

@@ -42,7 +42,7 @@ Confirms wiring and shows the language fields.
 
 ```
 DRY RUN — would run:
-  source=demo.mp4 is_url=False visual=False whisper=whisper.cpp:small lang=en whisper_lang=auto summary=gemini-flash out=./analyses
+  source=demo.mp4 is_url=False visual=False whisper=whisper.cpp:small lang=en whisper_lang=auto summary=gemini:gemini-2.5-pro out=./analyses
 ```
 
 The second prints `lang=ZH whisper_lang=ZH` (the backend lowercases to `zh` at

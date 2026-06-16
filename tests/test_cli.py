@@ -8,7 +8,7 @@ def _patch_stages(monkeypatch, visual_called):
     monkeypatch.setattr(cli, "resolve_transcript",
         lambda *a, **k: {"text": "hi", "segments": [{"start": 0.0, "text": "hi"}], "source": "subtitles"})
     monkeypatch.setattr(cli, "summarize",
-        lambda *a, **k: {"summary": "s", "chapters": [{"time": "00:00", "title": "Intro"}]})
+        lambda *a, **k: {"tldr": "a summary", "key_points": ["kp one"], "takeaways": ["tk one"], "chapters": [{"time": "00:00", "title": "Intro"}]})
 
     def fake_visual(*a, **k):
         visual_called.append(True)
@@ -31,6 +31,8 @@ def test_cli_writes_markdown_without_visual(tmp_path, monkeypatch):
     assert len(files) == 1
     text = files[0].read_text()
     assert "## Summary" in text
+    assert "### Key points" in text and "- kp one" in text
+    assert "### Takeaways" in text and "- tk one" in text
     assert "## Visual notes" not in text
 
 
@@ -109,7 +111,7 @@ def test_cli_summary_language_follows_transcript(tmp_path, monkeypatch):
 
     def fake_summary(transcript_text, backend, client, lang, **k):
         captured["lang"] = lang
-        return {"summary": "s", "chapters": []}
+        return {"tldr": "s", "key_points": [], "takeaways": [], "chapters": []}
 
     monkeypatch.setattr(cli, "summarize", fake_summary)
     monkeypatch.setattr(cli, "make_gemini_client", lambda: object())
@@ -132,7 +134,7 @@ def test_cli_no_lang_uses_auto_whisper_and_en_hint(monkeypatch, tmp_path):
     monkeypatch.setattr(cli, "make_gemini_client", lambda: object())
     monkeypatch.setattr(cli, "resolve_transcript", fake_resolve)
     monkeypatch.setattr(cli, "summarize",
-                        lambda *a, **k: {"summary": "s", "chapters": []})
+                        lambda *a, **k: {"tldr": "s", "key_points": [], "takeaways": [], "chapters": []})
     monkeypatch.setattr(cli, "probe_duration", lambda *a, **k: "00:10")
 
     rc = cli.main([str(tmp_path / "v.mp4"), "--out", str(tmp_path / "out")])
@@ -151,7 +153,7 @@ def test_cli_explicit_lang_sets_both(monkeypatch, tmp_path):
     monkeypatch.setattr(cli, "make_gemini_client", lambda: object())
     monkeypatch.setattr(cli, "resolve_transcript", fake_resolve)
     monkeypatch.setattr(cli, "summarize",
-                        lambda *a, **k: {"summary": "s", "chapters": []})
+                        lambda *a, **k: {"tldr": "s", "key_points": [], "takeaways": [], "chapters": []})
     monkeypatch.setattr(cli, "probe_duration", lambda *a, **k: "00:10")
 
     rc = cli.main([str(tmp_path / "v.mp4"), "--lang", "zh",
@@ -183,7 +185,7 @@ def test_cli_downloads_media_once_for_whisper_and_visual(tmp_path, monkeypatch):
         captured["video_path"] = video_path
         return {"notes": ["onscreen"]}
     monkeypatch.setattr(cli, "visual_notes", fake_visual)
-    monkeypatch.setattr(cli, "summarize", lambda *a, **k: {"summary": "s", "chapters": []})
+    monkeypatch.setattr(cli, "summarize", lambda *a, **k: {"tldr": "s", "key_points": [], "takeaways": [], "chapters": []})
     monkeypatch.setattr(cli, "make_gemini_client", lambda: object())
     monkeypatch.setattr(cli, "probe_duration", lambda *a, **k: "00:30")
     monkeypatch.setattr(cli, "today_str", lambda: "2026-06-16")

@@ -12,9 +12,12 @@ notes. Read the markdown to summarize and ask questions about the video.
 3. **Visual notes** — opt-in (`--visual`) Gemini Pro video pass. Off by default.
 
 The summary and chapters are written in the **transcript's own language**: when
-subtitles are used, that subtitle language wins; otherwise the `--lang` hint
-applies (default `en`). Pass `--lang` to prefer a subtitle language and set the
-fallback (e.g. `--lang zh` for a Chinese video with no detectable subtitles).
+subtitles are used, that subtitle language wins; otherwise Whisper auto-detects
+the spoken language and the summary follows it. Pass `--lang <code>` to prefer a
+subtitle language and force the Whisper transcription language (e.g. `--lang zh`).
+
+> Auto-detection needs a **multilingual** Whisper model (`--whisper-model small`
+> or `base`), not the English-only `base.en`.
 
 ## Install
 

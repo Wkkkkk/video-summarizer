@@ -16,6 +16,7 @@ from .acquire import acquire_media
 
 _TS = re.compile(r"(?:(\d+):)?(\d{2}):(\d{2})[.,](\d{3})\s*-->")
 _TAG = re.compile(r"<[^>]+>")
+_DETECT = re.compile(r"auto-detected language:\s*([a-z]{2,3})")
 
 
 def _ts_to_seconds(h, m, s, ms) -> float:
@@ -86,44 +87,63 @@ def extract_audio(video_path: str, workdir, run_fn=subprocess.run) -> str:
     return out
 
 
-def _whisper_cpp_backend(audio_path: str, run_fn, model: str) -> dict:
-    """Run whisper.cpp (`whisper-cli`) and read its plain-text output."""
+def _whisper_cpp_backend(audio_path: str, run_fn, model: str,
+                         lang: str = "auto") -> dict:
+    """Run whisper.cpp (`whisper-cli`) and read its plain-text output.
+
+    `lang` is "auto" (let whisper detect) or a language code; a BCP-47 tag is
+    reduced to its primary subtag ("zh-Hans" -> "zh"). With a concrete code the
+    result's "lang" is that code; in "auto" mode it is the language whisper
+    reports (parsed from its output), or unset if no detection line is found."""
+    code = "auto" if not lang or lang == "auto" else lang.split("-")[0]
     out_base = audio_path + ".out"
     cmd = ["whisper-cli", "-m", f"models/ggml-{model}.bin",
-           "-f", audio_path, "-otxt", "-of", out_base]
+           "-l", code, "-f", audio_path, "-otxt", "-of", out_base]
     proc = run_fn(cmd, capture_output=True, text=True)
     if getattr(proc, "returncode", 0) != 0:
         raise StageError("whisper.cpp transcription failed")
     with open(out_base + ".txt", encoding="utf-8") as fh:
         text = fh.read().strip()
-    return {"segments": [{"start": 0.0, "text": text}], "text": text}
+    result = {"segments": [{"start": 0.0, "text": text}], "text": text}
+    if code != "auto":
+        result["lang"] = code
+    else:
+        out = (getattr(proc, "stdout", "") or "") + (getattr(proc, "stderr", "") or "")
+        m = _DETECT.search(out)
+        if m:
+            result["lang"] = m.group(1)
+    return result
 
 
 WHISPER_BACKENDS = {"whisper.cpp": _whisper_cpp_backend}
 
 
 def transcribe_audio(audio_path: str, backend: str, model: str,
-                     registry=None, run_fn=subprocess.run) -> dict:
+                     lang: str = "auto", registry=None,
+                     run_fn=subprocess.run) -> dict:
     """Dispatch to a Whisper backend; stamps source='whisper:<model>'."""
     registry = WHISPER_BACKENDS if registry is None else registry
     fn = registry.get(backend)
     if fn is None:
         raise ConfigError(f"unknown whisper backend: {backend}")
-    result = fn(audio_path, run_fn=run_fn, model=model)
+    result = fn(audio_path, run_fn=run_fn, model=model, lang=lang)
     result["source"] = f"whisper:{model}"
     return result
 
 
 def resolve_transcript(source: str, is_url: bool, workdir, whisper_backend: str,
-                       model: str, lang: str = "en", run_fn=subprocess.run,
-                       fetch_fn=fetch_subtitles, acquire_fn=None,
-                       extract_fn=extract_audio, transcribe_fn=transcribe_audio) -> dict:
+                       model: str, lang: str = "en", whisper_lang: str = "auto",
+                       run_fn=subprocess.run, fetch_fn=fetch_subtitles,
+                       acquire_fn=None, extract_fn=extract_audio,
+                       transcribe_fn=transcribe_audio) -> dict:
     """Cheapest source first: subtitles (URLs only) -> acquire media -> Whisper.
 
-    `acquire_fn` is a zero-arg callable returning a local media path; it defaults
-    to acquiring `source` via `acquire_media`. The CLI injects a memoized closure
-    so the download is shared with the visual stage. The returned transcript
-    carries a 'lang' field (actual subtitle language, else the `lang` hint)."""
+    `lang` is the subtitle preference and the summary-language fallback.
+    `whisper_lang` is the transcription language ("auto" to let whisper detect,
+    else a language code). `acquire_fn` is a zero-arg callable returning a local
+    media path; it defaults to acquiring `source` via `acquire_media`. The
+    returned transcript carries a 'lang' field: the subtitle language, the
+    detected/explicit Whisper language, or the `lang` hint as a fallback."""
     if is_url:
         subs = fetch_fn(source, workdir, run_fn=run_fn, lang=lang)
         if subs is not None:
@@ -133,6 +153,7 @@ def resolve_transcript(source: str, is_url: bool, workdir, whisper_backend: str,
     else:
         media = acquire_fn()
     audio = extract_fn(media, workdir, run_fn=run_fn)
-    result = transcribe_fn(audio, backend=whisper_backend, model=model, run_fn=run_fn)
+    result = transcribe_fn(audio, backend=whisper_backend, model=model,
+                           lang=whisper_lang, run_fn=run_fn)
     result.setdefault("lang", lang)
     return result

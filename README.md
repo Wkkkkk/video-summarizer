@@ -26,6 +26,11 @@ set -a; source .env; set +a
 
 Requires on PATH: `yt-dlp` (URLs), `ffmpeg`, and a Whisper binary (`whisper.cpp`).
 
+For URL sources with **no subtitles**, the Whisper fallback downloads the media
+with `yt-dlp` first. Direct media URLs (e.g. public R2 `.mp4` links) and
+Bilibili work out of the box; **YouTube** video downloads additionally need a
+JavaScript runtime on PATH (`node`, `deno`, or `bun`) for yt-dlp.
+
 ## Usage
 
 ```bash

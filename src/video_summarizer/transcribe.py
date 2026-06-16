@@ -12,6 +12,7 @@ import re
 import subprocess
 
 from .errors import ConfigError, StageError
+from .acquire import acquire_media
 
 _TS = re.compile(r"(?:(\d+):)?(\d{2}):(\d{2})[.,](\d{3})\s*-->")
 _TAG = re.compile(r"<[^>]+>")
@@ -115,18 +116,23 @@ def transcribe_audio(audio_path: str, backend: str, model: str,
 
 def resolve_transcript(source: str, is_url: bool, workdir, whisper_backend: str,
                        model: str, lang: str = "en", run_fn=subprocess.run,
-                       fetch_fn=fetch_subtitles, extract_fn=extract_audio,
-                       transcribe_fn=transcribe_audio) -> dict:
-    """Cheapest source first: subtitles (URLs only) -> ffmpeg + Whisper.
+                       fetch_fn=fetch_subtitles, acquire_fn=None,
+                       extract_fn=extract_audio, transcribe_fn=transcribe_audio) -> dict:
+    """Cheapest source first: subtitles (URLs only) -> acquire media -> Whisper.
 
-    The returned transcript carries a 'lang' field: the actual subtitle
-    language when subtitles are used, otherwise the requested `lang` hint
-    (default 'en'). Downstream summary/analysis follows this language."""
+    `acquire_fn` is a zero-arg callable returning a local media path; it defaults
+    to acquiring `source` via `acquire_media`. The CLI injects a memoized closure
+    so the download is shared with the visual stage. The returned transcript
+    carries a 'lang' field (actual subtitle language, else the `lang` hint)."""
     if is_url:
         subs = fetch_fn(source, workdir, run_fn=run_fn, lang=lang)
         if subs is not None:
             return subs
-    audio = extract_fn(source, workdir, run_fn=run_fn)
+    if acquire_fn is None:
+        media = acquire_media(source, is_url, workdir, run_fn=run_fn)
+    else:
+        media = acquire_fn()
+    audio = extract_fn(media, workdir, run_fn=run_fn)
     result = transcribe_fn(audio, backend=whisper_backend, model=model, run_fn=run_fn)
     result.setdefault("lang", lang)
     return result

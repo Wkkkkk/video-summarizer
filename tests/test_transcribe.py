@@ -123,7 +123,8 @@ def test_resolve_falls_back_to_whisper_when_no_subs(tmp_path):
     result = resolve_transcript(
         "https://example.com/v", is_url=True, workdir=tmp_path,
         whisper_backend="whisper.cpp", model="small",
-        fetch_fn=subs, extract_fn=extract, transcribe_fn=whisper,
+        fetch_fn=subs, acquire_fn=lambda: "media.mp4",
+        extract_fn=extract, transcribe_fn=whisper,
     )
     assert result["text"] == "from whisper"
 
@@ -136,7 +137,8 @@ def test_resolve_local_file_skips_subtitle_fetch(tmp_path):
     result = resolve_transcript(
         "/path/movie.mp4", is_url=False, workdir=tmp_path,
         whisper_backend="whisper.cpp", model="small",
-        fetch_fn=subs, extract_fn=extract, transcribe_fn=whisper,
+        fetch_fn=subs, acquire_fn=lambda: "/path/movie.mp4",
+        extract_fn=extract, transcribe_fn=whisper,
     )
     assert result["text"] == "local"
 
@@ -177,6 +179,37 @@ def test_resolve_whisper_path_stamps_lang_hint(tmp_path):
     result = resolve_transcript(
         "https://example.com/v", is_url=True, workdir=tmp_path,
         whisper_backend="whisper.cpp", model="small", lang="fr",
-        fetch_fn=subs, extract_fn=extract, transcribe_fn=whisper,
+        fetch_fn=subs, acquire_fn=lambda: "media.mp4",
+        extract_fn=extract, transcribe_fn=whisper,
     )
     assert result["lang"] == "fr"
+
+
+def test_resolve_whisper_branch_calls_acquire(tmp_path):
+    acquired = []
+
+    def subs(url, workdir, run_fn, lang): return None
+    def acquire(): acquired.append(True); return "/local/media.mp4"
+    def extract(video, workdir, run_fn):
+        assert video == "/local/media.mp4"  # extract receives the acquired path
+        return "a.wav"
+    def whisper(audio, backend, model, run_fn): return {"text": "w", "segments": [], "source": "whisper:small"}
+
+    resolve_transcript(
+        "https://example.com/v", is_url=True, workdir=tmp_path,
+        whisper_backend="whisper.cpp", model="small",
+        fetch_fn=subs, acquire_fn=acquire, extract_fn=extract, transcribe_fn=whisper,
+    )
+    assert acquired == [True]
+
+
+def test_resolve_subtitles_branch_skips_acquire(tmp_path):
+    def subs(url, workdir, run_fn, lang): return {"text": "s", "segments": [], "source": "subtitles", "lang": "en"}
+    def boom(): raise AssertionError("acquire must not run when subtitles exist")
+
+    result = resolve_transcript(
+        "https://example.com/v", is_url=True, workdir=tmp_path,
+        whisper_backend="whisper.cpp", model="small",
+        fetch_fn=subs, acquire_fn=boom,
+    )
+    assert result["text"] == "s"

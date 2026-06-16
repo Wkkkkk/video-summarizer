@@ -70,3 +70,39 @@ def test_acquire_raises_stage_error_when_no_file_produced(tmp_path):
     with pytest.raises(StageError):
         acquire_media("https://r2.example/x.mp4", is_url=True,
                       workdir=tmp_path, run_fn=_ok_run_factory(tmp_path, write=False))
+
+
+def test_acquire_nonzero_exit_surfaces_ytdlp_error(tmp_path):
+    def fake_run(cmd, **kwargs):
+        class R:
+            returncode = 1
+            stdout = ""
+            stderr = "WARNING: something\nERROR: Unsupported URL: not-a-real-url"
+        return R()
+
+    with pytest.raises(StageError, match="Unsupported URL"):
+        acquire_media("not-a-real-url", is_url=True, workdir=tmp_path, run_fn=fake_run)
+
+
+def test_acquire_no_file_surfaces_ytdlp_output(tmp_path):
+    def fake_run(cmd, **kwargs):
+        class R:
+            returncode = 0
+            stdout = ""
+            stderr = "ERROR: unable to extract video id"
+        return R()  # exit 0 but no media.* written
+
+    with pytest.raises(StageError, match="unable to extract video id"):
+        acquire_media("https://youtube.com/watch?v=x", is_url=True,
+                      workdir=tmp_path, run_fn=fake_run)
+
+
+def test_acquire_error_without_stderr_still_raises(tmp_path):
+    # stub with no stderr attribute at all must not crash on the detail lookup
+    def fake_run(cmd, **kwargs):
+        class R:
+            returncode = 1
+        return R()
+
+    with pytest.raises(StageError, match="media download failed"):
+        acquire_media("https://r2.example/x.mp4", is_url=True, workdir=tmp_path, run_fn=fake_run)

@@ -104,7 +104,7 @@ from video_summarizer.transcribe import resolve_transcript
 
 
 def test_resolve_uses_subtitles_when_available(tmp_path):
-    def subs(url, workdir, run_fn): return {"text": "from subs", "segments": [], "source": "subtitles"}
+    def subs(url, workdir, run_fn, lang): return {"text": "from subs", "segments": [], "source": "subtitles", "lang": "en"}
     def boom(*a, **k): raise AssertionError("whisper should not run when subs exist")
 
     result = resolve_transcript(
@@ -116,7 +116,7 @@ def test_resolve_uses_subtitles_when_available(tmp_path):
 
 
 def test_resolve_falls_back_to_whisper_when_no_subs(tmp_path):
-    def subs(url, workdir, run_fn): return None
+    def subs(url, workdir, run_fn, lang): return None
     def extract(video, workdir, run_fn): return "a.wav"
     def whisper(audio, backend, model, run_fn): return {"text": "from whisper", "segments": [], "source": "whisper:small"}
 
@@ -139,3 +139,44 @@ def test_resolve_local_file_skips_subtitle_fetch(tmp_path):
         fetch_fn=subs, extract_fn=extract, transcribe_fn=whisper,
     )
     assert result["text"] == "local"
+
+
+def test_fetch_subtitles_requests_preferred_lang(tmp_path):
+    calls = []
+
+    def fake_run(cmd, **kwargs):
+        calls.append(cmd)
+        class R: returncode = 0
+        return R()
+
+    fetch_subtitles("https://example.com/v", tmp_path, run_fn=fake_run, lang="de")
+    cmd = calls[0]
+    sub_langs = cmd[cmd.index("--sub-langs") + 1]
+    assert "de" in sub_langs
+
+
+def test_fetch_subtitles_detects_language_from_filename(tmp_path):
+    vtt_path = tmp_path / "sub.zh-Hans.vtt"
+
+    def fake_run(cmd, **kwargs):
+        vtt_path.write_text(
+            "WEBVTT\n\n00:00:00.000 --> 00:00:01.000\nni hao\n", encoding="utf-8"
+        )
+        class R: returncode = 0
+        return R()
+
+    result = fetch_subtitles("https://example.com/v", tmp_path, run_fn=fake_run, lang="zh")
+    assert result["lang"] == "zh-Hans"
+
+
+def test_resolve_whisper_path_stamps_lang_hint(tmp_path):
+    def subs(url, workdir, run_fn, lang): return None
+    def extract(video, workdir, run_fn): return "a.wav"
+    def whisper(audio, backend, model, run_fn): return {"text": "x", "segments": [], "source": "whisper:small"}
+
+    result = resolve_transcript(
+        "https://example.com/v", is_url=True, workdir=tmp_path,
+        whisper_backend="whisper.cpp", model="small", lang="fr",
+        fetch_fn=subs, extract_fn=extract, transcribe_fn=whisper,
+    )
+    assert result["lang"] == "fr"

@@ -30,3 +30,22 @@ def test_extract_json_raises_stage_error_on_malformed_json():
 def test_extract_json_raises_stage_error_when_no_object():
     with pytest.raises(_StageError):
         _extract_json('no json here at all')
+
+
+def test_gemini_flash_backend_writes_in_requested_language():
+    from video_summarizer.summarize import _gemini_flash_backend
+    captured = {}
+
+    class FakeModels:
+        def generate_content(self, model, contents):
+            captured["contents"] = contents
+            class R: text = '{"summary": "s", "chapters": []}'
+            return R()
+
+    class FakeClient:
+        models = FakeModels()
+
+    result = _gemini_flash_backend("hello transcript", client=FakeClient(), lang="zh-Hans")
+    assert "zh-Hans" in captured["contents"]
+    assert "hello transcript" in captured["contents"]
+    assert result["summary"] == "s"

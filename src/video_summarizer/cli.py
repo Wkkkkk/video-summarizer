@@ -84,7 +84,8 @@ def main(argv=None) -> int:
         try:
             transcript = resolve_transcript(
                 args.source, is_url=is_url, workdir=workdir,
-                whisper_backend=args.whisper_backend, model=args.whisper_model)
+                whisper_backend=args.whisper_backend, model=args.whisper_model,
+                lang=args.lang)
         except ConfigError as e:
             print(f"error: {e}", file=sys.stderr)
             return 2
@@ -94,7 +95,7 @@ def main(argv=None) -> int:
 
         try:
             analysis = summarize(transcript["text"], backend=args.summary_backend,
-                                 client=client, lang=args.lang)
+                                 client=client, lang=transcript.get("lang", args.lang))
         except ConfigError as e:
             print(f"error: {e}", file=sys.stderr)
             return 2

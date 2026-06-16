@@ -116,5 +116,11 @@ sed -n '1,12p' "$(ls -t analyses/*.md | head -1)"   # metadata + Summary + start
 
 - The two English R2 fixtures from earlier testing return **404** (deleted) —
   only the Bilibili URL in Step 2 is live.
-- `--visual` (Gemini Pro video pass) needs a billing-enabled Gemini project;
-  `gemini-2.5-pro` is `limit:0` on the free tier.
+- `--visual` (Gemini Pro video pass) needs a billing-enabled Gemini project:
+  `gemini-2.5-pro` is `limit:0` on the free tier (429 RESOURCE_EXHAUSTED). On a
+  billing-enabled project the full pipeline runs to exit `0` with a populated
+  `## Visual notes` section. The visual backend uploads the video and polls the
+  Files API until it is `ACTIVE` before the model call (Gemini processes uploads
+  asynchronously; using the handle too early fails with 400 FAILED_PRECONDITION).
+- The Gemini models (`gemini-2.5-pro`, `gemini-flash-latest`, …) are hosted — no
+  local download. Only the Whisper `models/ggml-*.bin` files are local.

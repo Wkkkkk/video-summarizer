@@ -5,6 +5,7 @@ All subprocess calls go through an injected `run_fn` (default subprocess.run)
 so tests never invoke real binaries.
 """
 
+import html
 import re
 
 _TS = re.compile(r"(?:(\d+):)?(\d{2}):(\d{2})[.,](\d{3})\s*-->")
@@ -27,7 +28,7 @@ def parse_vtt(text: str) -> dict:
             i += 1
             cue_lines = []
             while i < len(lines) and lines[i].strip():
-                cue_lines.append(_TAG.sub("", lines[i]).strip())
+                cue_lines.append(html.unescape(_TAG.sub("", lines[i])).strip())
                 i += 1
             cue = " ".join(p for p in cue_lines if p)
             if cue:

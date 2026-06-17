@@ -1,4 +1,6 @@
 import os
+import runpy
+import sys
 import pytest
 from video_summarizer import cli
 from video_summarizer.errors import ConfigError
@@ -73,6 +75,56 @@ def test_cli_without_title_falls_back_to_source_derived(tmp_path, monkeypatch):
     assert "# my-clip" in files[0].read_text()
 
 
+def test_cli_duration_from_segments_when_no_media(tmp_path, monkeypatch):
+    # URL + subtitles: the media is never downloaded, so ffprobe cannot run on a
+    # URL. Duration must fall back to the last transcript cue's start time
+    # instead of rendering '??:??'.
+    monkeypatch.setattr(cli, "resolve_transcript",
+        lambda *a, **k: {"text": "hi",
+                         "segments": [{"start": 0.0, "text": "a"},
+                                      {"start": 125.0, "text": "b"}],
+                         "source": "subtitles"})
+    monkeypatch.setattr(cli, "summarize",
+        lambda *a, **k: {"tldr": "s", "key_points": [], "takeaways": [], "chapters": []})
+    monkeypatch.setattr(cli, "make_gemini_client", lambda: object())
+    monkeypatch.setattr(cli, "today_str", lambda: "2026-06-16")
+    monkeypatch.setenv("GEMINI_API_KEY", "x")
+
+    code = cli.main(["https://example.com/v", "--out", str(tmp_path)])
+    assert code == 0
+    text = list(tmp_path.glob("*.md"))[0].read_text()
+    assert "duration: 02:05" in text   # 125s -> 02:05, no ffprobe on the URL
+
+
+def test_cli_duration_probes_local_media_not_url(tmp_path, monkeypatch):
+    # URL with no subtitles: media is downloaded for Whisper, so ffprobe must be
+    # handed the LOCAL media path — never the source URL (ffprobe can't read a
+    # site URL and would yield '??:??').
+    monkeypatch.setattr(cli, "acquire_media", lambda *a, **k: "/local/media.mp4")
+
+    def fake_resolve(*a, **k):
+        k["acquire_fn"]()  # Whisper branch downloads the media
+        return {"text": "hi", "segments": [], "source": "whisper:small", "lang": "en"}
+    monkeypatch.setattr(cli, "resolve_transcript", fake_resolve)
+    monkeypatch.setattr(cli, "summarize",
+        lambda *a, **k: {"tldr": "s", "key_points": [], "takeaways": [], "chapters": []})
+    monkeypatch.setattr(cli, "make_gemini_client", lambda: object())
+    monkeypatch.setattr(cli, "today_str", lambda: "2026-06-16")
+    monkeypatch.setenv("GEMINI_API_KEY", "x")
+
+    seen = {}
+
+    def fake_probe(path, *a, **k):
+        seen["path"] = path
+        return "10:00"
+    monkeypatch.setattr(cli, "probe_duration", fake_probe)
+
+    code = cli.main(["https://r2.example/x.mp4", "--out", str(tmp_path)])
+    assert code == 0
+    assert seen["path"] == "/local/media.mp4"
+    assert "10:00" in list(tmp_path.glob("*.md"))[0].read_text()
+
+
 def test_cli_dry_run_writes_nothing(tmp_path, monkeypatch):
     _patch_stages(monkeypatch, [])
     code = cli.main(["movie.mp4", "--dry-run", "--out", str(tmp_path)])
@@ -86,6 +138,17 @@ def test_cli_dry_run_reports_language(tmp_path, monkeypatch, capsys):
     out = capsys.readouterr().out
     assert "lang=en" in out          # summary fallback
     assert "whisper_lang=auto" in out  # auto-detect by default
+
+
+def test_module_entrypoint_invokes_main(monkeypatch, capsys):
+    # `python -m video_summarizer.cli ...` must actually run main(); without a
+    # __main__ guard the module just imports (defines functions) and exits 0
+    # silently, writing nothing. --dry-run keeps this hermetic (no network/key).
+    monkeypatch.setattr(sys, "argv", ["video-summarizer", "movie.mp4", "--dry-run"])
+    with pytest.raises(SystemExit) as exc:
+        runpy.run_module("video_summarizer.cli", run_name="__main__")
+    assert exc.value.code == 0
+    assert "DRY RUN" in capsys.readouterr().out
 
 
 def test_cli_missing_key_returns_exit_2(tmp_path, monkeypatch):

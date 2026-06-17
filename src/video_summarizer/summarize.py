@@ -78,7 +78,59 @@ def _gemini_backend(transcript_text: str, client, lang: str,
     }
 
 
-SUMMARIZERS = {"gemini": _gemini_backend}
+# Structured-output schema for the Claude backend. Same shape as SUMMARY_SCHEMA
+# but with the `required`/`additionalProperties: false` that Anthropic structured
+# outputs require on every object.
+_ANTHROPIC_SUMMARY_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "properties": {
+        "tldr": {"type": "string"},
+        "key_points": {"type": "array", "items": {"type": "string"}},
+        "takeaways": {"type": "array", "items": {"type": "string"}},
+        "chapters": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "additionalProperties": False,
+                "properties": {
+                    "time": {"type": "string"},
+                    "title": {"type": "string"},
+                },
+                "required": ["time", "title"],
+            },
+        },
+    },
+    "required": ["tldr", "key_points", "takeaways", "chapters"],
+}
+
+
+def _anthropic_backend(transcript_text: str, client, lang: str,
+                       model: str = "claude-opus-4-8") -> dict:
+    """Summarize via the Anthropic Messages API with structured output.
+
+    Mirrors _gemini_backend: same prompt, same return shape. The client is
+    injected so tests never touch the network. structured outputs guarantee
+    valid JSON; _extract_json is a defensive parse of the text block."""
+    resp = client.messages.create(
+        model=model,
+        max_tokens=16000,
+        messages=[{"role": "user",
+                   "content": _PROMPT + _lang_instruction(lang) + transcript_text}],
+        output_config={"format": {"type": "json_schema",
+                                  "schema": _ANTHROPIC_SUMMARY_SCHEMA}},
+    )
+    text = next((b.text for b in resp.content if getattr(b, "type", None) == "text"), "")
+    data = _extract_json(text)
+    return {
+        "tldr": data.get("tldr", ""),
+        "key_points": data.get("key_points", []),
+        "takeaways": data.get("takeaways", []),
+        "chapters": data.get("chapters", []),
+    }
+
+
+SUMMARIZERS = {"gemini": _gemini_backend, "claude": _anthropic_backend}
 
 
 def summarize(transcript_text: str, backend: str, client, lang: str,

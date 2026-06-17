@@ -1,0 +1,10 @@
+{
+  "name": "video-summarizer",
+  "description": "Summarize any video (local file, direct URL, or yt-dlp site URL) into a structured markdown note, then answer questions about it. Wraps the video-summarizer CLI.",
+  "version": "0.1.0",
+  "author": { "name": "Kun Wu" },
+  "homepage": "https://github.com/Wkkkkk/video-summarizer",
+  "repository": "https://github.com/Wkkkkk/video-summarizer",
+  "license": "Apache-2.0",
+  "keywords": ["video", "transcript", "summary", "whisper", "gemini", "youtube"]
+}

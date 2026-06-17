@@ -10,7 +10,11 @@ notes. Read the markdown to summarize and ask questions about the video.
    `ffmpeg` and transcribe with Whisper (`whisper.cpp` by default).
 2. **Summary + chapters** — a structured pass (TL;DR + key points + takeaways +
    chapters) over the transcript, by default `gemini-2.5-pro`. Override with
-   `--summary-model gemini-flash-latest` for a cheaper run.
+   `--summary-model gemini-flash-latest` for a cheaper run, or
+   `--summary-backend claude` to summarize with Claude (`claude-opus-4-8` by
+   default; needs `ANTHROPIC_API_KEY`). If the Gemini summary errors or
+   rate-limits and `ANTHROPIC_API_KEY` is set, the run automatically falls back
+   to Claude rather than degrading to a transcript-only file.
 3. **Visual notes** — opt-in (`--visual`) Gemini Pro video pass. Off by default.
    Runs at low media resolution to keep cost down; pass `--media-resolution
    default` for full-resolution frames when on-screen text or charts matter.
@@ -57,6 +61,22 @@ Output: `./analyses/<slug>.md` (slug from the title; Unicode titles kept,
 clashes get a `-2`, `-3`, … suffix rather than overwriting). Exit codes: `0`
 success, `1` partial (e.g. summary failed but transcript written), `2`
 config/usage error.
+
+## Use as a Claude Code plugin
+
+This repo also ships a Claude Code plugin (in `plugin/`) that wraps the CLI and adds a
+conversational "ask questions about the video" layer. The repo root is itself a plugin
+marketplace (`.claude-plugin/marketplace.json`).
+
+```text
+/plugin marketplace add Wkkkkk/video-summarizer     # or a local path to this repo
+/plugin install video-summarizer@video-summarizer
+/video-summarizer:summarize-video                   # then share a video file or URL
+```
+
+The skill detects the `video-summarizer` CLI (prompting to `pipx install` it if missing),
+runs it, reads the produced markdown, and answers follow-up questions about the video at no
+extra model cost. It still needs the native deps and an API key described above.
 
 ## Test
 

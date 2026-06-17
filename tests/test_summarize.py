@@ -7,6 +7,10 @@ def test_default_summarizer_registered():
     assert "gemini" in SUMMARIZERS
 
 
+def test_claude_summarizer_registered():
+    assert "claude" in SUMMARIZERS
+
+
 def test_summarize_dispatches_to_backend():
     def fake(transcript_text, client, lang, model):
         return {"tldr": "it is about X", "key_points": ["a"], "takeaways": ["b"],
@@ -85,3 +89,62 @@ def test_gemini_backend_writes_in_requested_language_and_uses_model():
     assert result["tldr"] == "s"
     assert result["key_points"] == ["k1"]
     assert result["takeaways"] == ["t1"]
+
+
+def test_claude_backend_writes_in_requested_language_and_uses_model():
+    from video_summarizer.summarize import _anthropic_backend
+    captured = {}
+
+    class FakeMessages:
+        def create(self, model, messages, output_config=None, **kwargs):
+            captured["messages"] = messages
+            captured["model"] = model
+            captured["output_config"] = output_config
+
+            class Block:
+                type = "text"
+                text = ('{"tldr": "s", "key_points": ["k1"], '
+                        '"takeaways": ["t1"], "chapters": []}')
+
+            class R:
+                content = [Block()]
+
+            return R()
+
+    class FakeClient:
+        messages = FakeMessages()
+
+    result = _anthropic_backend("hello transcript", client=FakeClient(),
+                                lang="zh-Hans", model="claude-opus-4-8")
+    blob = str(captured["messages"])
+    assert "zh-Hans" in blob
+    assert "hello transcript" in blob
+    assert captured["model"] == "claude-opus-4-8"
+    assert captured["output_config"] is not None     # structured output requested
+    assert result["tldr"] == "s"
+    assert result["key_points"] == ["k1"]
+    assert result["takeaways"] == ["t1"]
+
+
+def test_claude_backend_skips_non_text_blocks():
+    from video_summarizer.summarize import _anthropic_backend
+
+    class ThinkingBlock:
+        type = "thinking"
+        thinking = "deliberating..."
+
+    class TextBlock:
+        type = "text"
+        text = '{"tldr": "ok", "key_points": [], "takeaways": [], "chapters": []}'
+
+    class FakeMessages:
+        def create(self, **kwargs):
+            class R:
+                content = [ThinkingBlock(), TextBlock()]
+            return R()
+
+    class FakeClient:
+        messages = FakeMessages()
+
+    result = _anthropic_backend("t", client=FakeClient(), lang="en")
+    assert result["tldr"] == "ok"

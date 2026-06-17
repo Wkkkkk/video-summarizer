@@ -53,9 +53,10 @@ video-summarizer ./talk.mp4 --dry-run                         # show the plan, d
 
 Each `.md` opens with YAML frontmatter (`title`, `source`, `duration`, `date`,
 `transcript_source`) so the file is vault-ready — point `--out` at an Obsidian
-folder and the notes are queryable. The title is derived from the source by
-default; pass `--title` when the source is a metadata-less URL (it drives the H1,
-the frontmatter, and the filename slug).
+folder and the notes are queryable. For yt-dlp site URLs the real video title is
+fetched automatically (via `yt-dlp` metadata, no download); otherwise the title
+is derived from the source basename. Pass `--title` to override it — it drives
+the H1, the frontmatter, and the filename slug.
 
 Output: `./analyses/<slug>.md` (slug from the title; Unicode titles kept,
 clashes get a `-2`, `-3`, … suffix rather than overwriting). Exit codes: `0`

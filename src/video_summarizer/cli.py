@@ -88,6 +88,36 @@ def _title_from_source(source: str) -> str:
     return os.path.splitext(base)[0] or "video"
 
 
+def _title_from_url_metadata(url: str, run_fn=subprocess.run):
+    """Best-effort real title from yt-dlp metadata (no download).
+
+    Returns the title string, or None if yt-dlp is missing/fails or the URL has
+    no extractable title (e.g. a plain media URL) — callers fall back to the
+    URL basename."""
+    try:
+        proc = run_fn(["yt-dlp", "--skip-download", "--no-warnings",
+                       "--print", "%(title)s", url],
+                      capture_output=True, text=True, timeout=60)
+    except Exception:
+        return None
+    if getattr(proc, "returncode", 1) != 0:
+        return None
+    out = (proc.stdout or "").strip()
+    return out.splitlines()[0].strip() if out else None
+
+
+def _resolve_title(args, is_url: str) -> str:
+    """--title wins; else the real title from yt-dlp metadata for URLs; else
+    the URL/file basename."""
+    if args.title:
+        return args.title
+    if is_url:
+        meta = _title_from_url_metadata(args.source)
+        if meta:
+            return meta
+    return _title_from_source(args.source)
+
+
 def main(argv=None) -> int:
     argv = sys.argv[1:] if argv is None else argv
     p = argparse.ArgumentParser(prog="video-summarizer")
@@ -115,7 +145,6 @@ def main(argv=None) -> int:
         args.summary_backend, "gemini-2.5-pro")
 
     is_url = args.source.startswith(_URL_PREFIXES)
-    title = args.title or _title_from_source(args.source)
 
     if args.dry_run:
         plan = (f"source={args.source} is_url={is_url} visual={args.visual} "
@@ -125,6 +154,8 @@ def main(argv=None) -> int:
                 f"media_res={args.media_resolution} out={args.out}")
         print("DRY RUN — would run:\n  " + plan)
         return 0
+
+    title = _resolve_title(args, is_url)
 
     try:
         client = make_summary_client(args.summary_backend)

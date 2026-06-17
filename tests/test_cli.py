@@ -5,6 +5,17 @@ import pytest
 from video_summarizer import cli
 from video_summarizer.errors import ConfigError
 
+# Real reference for the helper's own unit tests (the autouse fixture below
+# stubs the module attribute so no test hits the network for a title).
+_REAL_TITLE_META = cli._title_from_url_metadata
+
+
+@pytest.fixture(autouse=True)
+def _no_network_title(monkeypatch):
+    # Default: never fetch a real title. Tests that exercise auto-titling
+    # override this with their own setattr (last one wins).
+    monkeypatch.setattr(cli, "_title_from_url_metadata", lambda *a, **k: None)
+
 
 def _patch_stages(monkeypatch, visual_called):
     monkeypatch.setattr(cli, "resolve_transcript",
@@ -123,6 +134,82 @@ def test_cli_duration_probes_local_media_not_url(tmp_path, monkeypatch):
     assert code == 0
     assert seen["path"] == "/local/media.mp4"
     assert "10:00" in list(tmp_path.glob("*.md"))[0].read_text()
+
+
+def test_title_from_url_metadata_returns_first_line():
+    def fake_run(cmd, capture_output, text, timeout):
+        assert cmd[0] == "yt-dlp" and "%(title)s" in cmd
+        class P:
+            returncode = 0
+            stdout = "Software engineering at the tipping point\n"
+        return P()
+    assert _REAL_TITLE_META("https://x/y", run_fn=fake_run) == \
+        "Software engineering at the tipping point"
+
+
+def test_title_from_url_metadata_none_on_failure():
+    def boom(*a, **k):
+        raise FileNotFoundError("yt-dlp not installed")
+    assert _REAL_TITLE_META("https://x/y", run_fn=boom) is None
+
+    def nonzero(*a, **k):
+        class P:
+            returncode = 1
+            stdout = ""
+        return P()
+    assert _REAL_TITLE_META("https://x/y", run_fn=nonzero) is None
+
+
+def test_cli_auto_titles_url_from_metadata(tmp_path, monkeypatch):
+    # No --title on a URL: the CLI uses the yt-dlp metadata title for the H1
+    # and the filename slug, not the ugly URL basename.
+    _patch_stages(monkeypatch, [])
+    monkeypatch.setattr(cli, "_title_from_url_metadata",
+        lambda *a, **k: "Software Engineering at the Tipping Point")
+    monkeypatch.setenv("GEMINI_API_KEY", "x")
+
+    code = cli.main(["https://www.youtube.com/watch?v=2n41YjR5QfU&t=2s",
+                     "--out", str(tmp_path)])
+    assert code == 0
+    files = list(tmp_path.glob("*.md"))
+    assert files[0].name == "software-engineering-at-the-tipping-point.md"
+    assert "# Software Engineering at the Tipping Point" in files[0].read_text()
+
+
+def test_cli_explicit_title_skips_metadata_lookup(tmp_path, monkeypatch):
+    # --title wins and the metadata lookup is never called.
+    _patch_stages(monkeypatch, [])
+    monkeypatch.setattr(cli, "_title_from_url_metadata",
+        lambda *a, **k: (_ for _ in ()).throw(AssertionError("must not look up metadata")))
+    monkeypatch.setenv("GEMINI_API_KEY", "x")
+
+    code = cli.main(["https://www.youtube.com/watch?v=abc", "--title", "Clean",
+                     "--out", str(tmp_path)])
+    assert code == 0
+    assert list(tmp_path.glob("*.md"))[0].name == "clean.md"
+
+
+def test_cli_local_file_skips_metadata_lookup(tmp_path, monkeypatch):
+    # Local-file sources never trigger a yt-dlp metadata lookup.
+    _patch_stages(monkeypatch, [])
+    monkeypatch.setattr(cli, "_title_from_url_metadata",
+        lambda *a, **k: (_ for _ in ()).throw(AssertionError("must not look up metadata")))
+    monkeypatch.setenv("GEMINI_API_KEY", "x")
+
+    code = cli.main(["my-clip.mp4", "--out", str(tmp_path)])
+    assert code == 0
+    assert list(tmp_path.glob("*.md"))[0].name == "my-clip.md"
+
+
+def test_cli_auto_title_falls_back_to_basename_when_metadata_none(tmp_path, monkeypatch):
+    # Metadata lookup fails (returns None) → fall back to the URL basename.
+    _patch_stages(monkeypatch, [])
+    monkeypatch.setattr(cli, "_title_from_url_metadata", lambda *a, **k: None)
+    monkeypatch.setenv("GEMINI_API_KEY", "x")
+
+    code = cli.main(["https://r2.example/my-clip.mp4", "--out", str(tmp_path)])
+    assert code == 0
+    assert list(tmp_path.glob("*.md"))[0].name == "my-clip.md"
 
 
 def test_cli_dry_run_writes_nothing(tmp_path, monkeypatch):

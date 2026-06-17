@@ -43,10 +43,17 @@ JavaScript runtime on PATH (`node`, `deno`, or `bun`) for yt-dlp.
 ```bash
 video-summarizer "https://www.youtube.com/watch?v=..."        # transcript + summary + chapters
 video-summarizer ./talk.mp4 --visual                          # + on-screen visual notes
+video-summarizer ./clip.mp4 --title "My Clean Title"          # override the derived title
 video-summarizer ./talk.mp4 --dry-run                         # show the plan, do nothing
 ```
 
-Output: `./analyses/<slug>.md` (slug from the source title; Unicode titles kept,
+Each `.md` opens with YAML frontmatter (`title`, `source`, `duration`, `date`,
+`transcript_source`) so the file is vault-ready — point `--out` at an Obsidian
+folder and the notes are queryable. The title is derived from the source by
+default; pass `--title` when the source is a metadata-less URL (it drives the H1,
+the frontmatter, and the filename slug).
+
+Output: `./analyses/<slug>.md` (slug from the title; Unicode titles kept,
 clashes get a `-2`, `-3`, … suffix rather than overwriting). Exit codes: `0`
 success, `1` partial (e.g. summary failed but transcript written), `2`
 config/usage error.

@@ -3,6 +3,8 @@
 import os
 import re
 
+import yaml
+
 _MAX_SLUG_LEN = 80
 
 
@@ -42,8 +44,26 @@ def _bulleted(lines, items):
         lines.append(f"- {item}")
 
 
+def _frontmatter(title, source, duration, date, transcript_source) -> str:
+    """YAML frontmatter block, vault-ready. Keys are emitted in a fixed order;
+    empty/None values are dropped (never `null`). `safe_dump` quotes scalars that
+    would otherwise change type — e.g. a `12:25` duration that YAML 1.1 would read
+    as the base-60 int 745."""
+    meta = {
+        "title": title,
+        "source": source,
+        "duration": duration,
+        "date": date,
+        "transcript_source": transcript_source,
+    }
+    meta = {k: v for k, v in meta.items() if v not in (None, "")}
+    body = yaml.safe_dump(meta, sort_keys=False, allow_unicode=True).rstrip("\n")
+    return f"---\n{body}\n---"
+
+
 def render_markdown(title, source, duration, date, transcript, analysis, visual) -> str:
     lines = [
+        _frontmatter(title, source, duration, date, transcript.get("source")),
         f"# {title}",
         f"_{source} · {duration} · {date} · transcript-source: {transcript['source']}_",
         "",

@@ -55,6 +55,8 @@ def main(argv=None) -> int:
     argv = sys.argv[1:] if argv is None else argv
     p = argparse.ArgumentParser(prog="video-summarizer")
     p.add_argument("source", help="local file, direct URL, or yt-dlp site URL")
+    p.add_argument("--title", default=None,
+                   help="override the derived title (drives the H1, frontmatter, and filename)")
     p.add_argument("--visual", action="store_true", help="run opt-in Gemini Pro visual pass")
     p.add_argument("--out", default="./analyses", help="output directory")
     p.add_argument("--whisper-backend", default="whisper.cpp")
@@ -73,7 +75,7 @@ def main(argv=None) -> int:
     whisper_lang = args.lang or "auto"  # whisper transcription language
 
     is_url = args.source.startswith(_URL_PREFIXES)
-    title = _title_from_source(args.source)
+    title = args.title or _title_from_source(args.source)
 
     if args.dry_run:
         plan = (f"source={args.source} is_url={is_url} visual={args.visual} "

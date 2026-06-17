@@ -1,6 +1,15 @@
 import os
 
+import yaml
+
 from video_summarizer.render import slugify, unique_path, render_markdown
+
+
+def _frontmatter(md):
+    """Parse the leading `--- ... ---` YAML block; return (dict, body)."""
+    assert md.startswith("---\n"), "document must open with a frontmatter block"
+    _, fm, body = md.split("---\n", 2)
+    return yaml.safe_load(fm), body
 
 
 def test_slugify_ascii_lowercase_hyphen():
@@ -82,6 +91,59 @@ def test_render_markdown_tolerates_chapter_missing_keys():
     assert "## Chapters" in md
     assert "No time" in md          # chapter with only a title still renders
     assert "01:00" in md            # chapter with only a time still renders
+
+
+def test_render_markdown_emits_frontmatter_then_h1_and_body_line():
+    md = render_markdown(
+        title="My Talk", source="https://x/v.mp4", duration="12:25", date="2026-06-16",
+        transcript={"text": "hi", "segments": [], "source": "whisper:base"},
+        analysis={"tldr": "s", "key_points": [], "takeaways": [], "chapters": []},
+        visual=None,
+    )
+    fm, body = _frontmatter(md)
+    assert fm["title"] == "My Talk"
+    assert fm["source"] == "https://x/v.mp4"
+    assert fm["transcript_source"] == "whisper:base"
+    # H1 and the existing body metadata line are both kept (decision 3).
+    assert "# My Talk" in body
+    assert "· transcript-source: whisper:base_" in body
+
+
+def test_render_frontmatter_duration_is_a_string_not_base60_int():
+    # YAML 1.1 parses an unquoted 12:25 as the sexagesimal int 745; the emitter
+    # must quote it so it round-trips as the string "12:25".
+    md = render_markdown(
+        title="T", source="movie.mp4", duration="12:25", date="2026-06-16",
+        transcript={"text": "hi", "segments": [], "source": "subtitles"},
+        analysis={"tldr": "s", "key_points": [], "takeaways": [], "chapters": []},
+        visual=None,
+    )
+    fm, _ = _frontmatter(md)
+    assert fm["duration"] == "12:25"
+
+
+def test_render_frontmatter_preserves_colon_and_unicode_title():
+    title = "讲透 Agentic Design Patterns 1/21: Prompt Chaining"
+    md = render_markdown(
+        title=title, source="movie.mp4", duration="01:00", date="2026-06-16",
+        transcript={"text": "hi", "segments": [], "source": "subtitles"},
+        analysis={"tldr": "s", "key_points": [], "takeaways": [], "chapters": []},
+        visual=None,
+    )
+    fm, _ = _frontmatter(md)
+    assert fm["title"] == title
+
+
+def test_render_frontmatter_omits_empty_fields_without_null():
+    md = render_markdown(
+        title="T", source="movie.mp4", duration="", date="2026-06-16",
+        transcript={"text": "hi", "segments": [], "source": "subtitles"},
+        analysis={"tldr": "s", "key_points": [], "takeaways": [], "chapters": []},
+        visual=None,
+    )
+    fm, _ = _frontmatter(md)
+    assert "duration" not in fm        # empty value dropped entirely
+    assert "null" not in md.split("---\n", 2)[1]   # never emits a null literal
 
 
 def test_render_markdown_with_visual_includes_section():

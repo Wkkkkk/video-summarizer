@@ -47,6 +47,32 @@ def test_cli_runs_visual_when_flag_set(tmp_path, monkeypatch):
     assert "## Visual notes" in list(tmp_path.glob("*.md"))[0].read_text()
 
 
+def test_cli_title_overrides_h1_and_filename(tmp_path, monkeypatch):
+    # The watcher feeds an ugly R2 .mp4 URL but knows the clean title; --title
+    # must drive both the H1 and the output filename slug.
+    _patch_stages(monkeypatch, [])
+    monkeypatch.setenv("GEMINI_API_KEY", "x")
+
+    code = cli.main(["https://r2.example/bilibili-20260616-BV1xx.mp4",
+                     "--title", "Clean Human Title", "--out", str(tmp_path)])
+    assert code == 0
+    files = list(tmp_path.glob("*.md"))
+    assert len(files) == 1
+    assert files[0].name == "clean-human-title.md"   # filename from --title, not URL slug
+    assert "# Clean Human Title" in files[0].read_text()
+
+
+def test_cli_without_title_falls_back_to_source_derived(tmp_path, monkeypatch):
+    _patch_stages(monkeypatch, [])
+    monkeypatch.setenv("GEMINI_API_KEY", "x")
+
+    code = cli.main(["https://r2.example/my-clip.mp4", "--out", str(tmp_path)])
+    assert code == 0
+    files = list(tmp_path.glob("*.md"))
+    assert files[0].name == "my-clip.md"             # derived from the source basename
+    assert "# my-clip" in files[0].read_text()
+
+
 def test_cli_dry_run_writes_nothing(tmp_path, monkeypatch):
     _patch_stages(monkeypatch, [])
     code = cli.main(["movie.mp4", "--dry-run", "--out", str(tmp_path)])

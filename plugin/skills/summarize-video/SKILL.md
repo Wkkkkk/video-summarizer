@@ -27,7 +27,7 @@ conversational layer the CLI lacks: answering questions, reframing, and condensi
    video-summarizer "<source>" --out ./analyses --summary-backend claude
    ```
    - Drop `--summary-backend claude` to use the default Gemini backend (needs `GEMINI_API_KEY`).
-   - Add `--title "<clean title>"` when the source is a metadata-less URL (drives the H1 + filename).
+   - For yt-dlp site URLs the real video title is fetched automatically; pass `--title "<clean title>"` only to override it (or for a direct media URL whose basename is ugly).
    - Add `--visual` only if the user asks about on-screen text/slides/charts (Gemini-only, costs more).
    The CLI prints the path of the written markdown file. Run with `--dry-run` first if you want to show the plan.
 

@@ -207,6 +207,36 @@ def test_fetch_subtitles_requests_preferred_lang(tmp_path):
     assert "de" in sub_langs
 
 
+def test_fetch_subtitles_passes_cookie_args(tmp_path):
+    calls = []
+
+    def fake_run(cmd, **kwargs):
+        calls.append(cmd)
+        class R: returncode = 0
+        return R()
+
+    fetch_subtitles("https://example.com/v", tmp_path, run_fn=fake_run, lang="en",
+                    cookie_args=["--cookies-from-browser", "chrome"])
+    cmd = calls[0]
+    assert cmd[0] == "yt-dlp"
+    assert "--cookies-from-browser" in cmd and "chrome" in cmd
+
+
+def test_resolve_transcript_threads_cookie_args_to_fetch(tmp_path):
+    captured = {}
+
+    def subs(url, workdir, run_fn, lang, cookie_args=()):
+        captured["cookie_args"] = cookie_args
+        return {"text": "s", "segments": [], "source": "subtitles", "lang": "en"}
+
+    resolve_transcript(
+        "https://example.com/v", is_url=True, workdir=tmp_path,
+        whisper_backend="whisper.cpp", model="small",
+        fetch_fn=subs, cookie_args=["--cookies-from-browser", "chrome"],
+    )
+    assert captured["cookie_args"] == ["--cookies-from-browser", "chrome"]
+
+
 def test_fetch_subtitles_detects_language_from_filename(tmp_path):
     vtt_path = tmp_path / "sub.zh-Hans.vtt"
 

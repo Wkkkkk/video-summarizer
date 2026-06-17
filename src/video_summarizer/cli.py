@@ -88,14 +88,26 @@ def _title_from_source(source: str) -> str:
     return os.path.splitext(base)[0] or "video"
 
 
-def _title_from_url_metadata(url: str, run_fn=subprocess.run):
+def _cookie_args(args) -> list:
+    """yt-dlp cookie flags from --cookies-from-browser / --cookies (for sites
+    behind a login or risk-control, e.g. some Bilibili videos). Empty when
+    neither is set."""
+    out = []
+    if args.cookies_from_browser:
+        out += ["--cookies-from-browser", args.cookies_from_browser]
+    if args.cookies:
+        out += ["--cookies", args.cookies]
+    return out
+
+
+def _title_from_url_metadata(url: str, run_fn=subprocess.run, cookie_args=()):
     """Best-effort real title from yt-dlp metadata (no download).
 
     Returns the title string, or None if yt-dlp is missing/fails or the URL has
     no extractable title (e.g. a plain media URL) — callers fall back to the
     URL basename."""
     try:
-        proc = run_fn(["yt-dlp", "--skip-download", "--no-warnings",
+        proc = run_fn(["yt-dlp", *cookie_args, "--skip-download", "--no-warnings",
                        "--print", "%(title)s", url],
                       capture_output=True, text=True, timeout=60)
     except Exception:
@@ -106,13 +118,13 @@ def _title_from_url_metadata(url: str, run_fn=subprocess.run):
     return out.splitlines()[0].strip() if out else None
 
 
-def _resolve_title(args, is_url: str) -> str:
+def _resolve_title(args, is_url: str, cookie_args=()) -> str:
     """--title wins; else the real title from yt-dlp metadata for URLs; else
     the URL/file basename."""
     if args.title:
         return args.title
     if is_url:
-        meta = _title_from_url_metadata(args.source)
+        meta = _title_from_url_metadata(args.source, cookie_args=cookie_args)
         if meta:
             return meta
     return _title_from_source(args.source)
@@ -136,6 +148,11 @@ def main(argv=None) -> int:
                    help="transcription/summary language; omit to auto-detect")
     p.add_argument("--media-resolution", choices=["low", "default"], default="low",
                    help="resolution for the --visual video pass; 'low' is ~3x cheaper")
+    p.add_argument("--cookies-from-browser", default=None,
+                   help="browser to read cookies from for yt-dlp (e.g. chrome) — "
+                        "needed for sites behind a login/risk-control like some Bilibili videos")
+    p.add_argument("--cookies", default=None,
+                   help="path to a yt-dlp cookies.txt file (alternative to --cookies-from-browser)")
     p.add_argument("--dry-run", action="store_true")
     args = p.parse_args(argv)
 
@@ -155,7 +172,8 @@ def main(argv=None) -> int:
         print("DRY RUN — would run:\n  " + plan)
         return 0
 
-    title = _resolve_title(args, is_url)
+    cookie_args = _cookie_args(args)
+    title = _resolve_title(args, is_url, cookie_args=cookie_args)
 
     try:
         client = make_summary_client(args.summary_backend)
@@ -179,12 +197,13 @@ def main(argv=None) -> int:
 
         def get_media():
             if "path" not in _media:
-                _media["path"] = acquire_media(args.source, is_url, workdir)
+                _media["path"] = acquire_media(args.source, is_url, workdir,
+                                               cookie_args=cookie_args)
             return _media["path"]
 
         try:
             transcript = resolve_transcript(
-                args.source, is_url=is_url, workdir=workdir,
+                args.source, is_url=is_url, workdir=workdir, cookie_args=cookie_args,
                 whisper_backend=args.whisper_backend, model=args.whisper_model,
                 lang=lang, whisper_lang=whisper_lang, acquire_fn=get_media)
         except ConfigError as e:

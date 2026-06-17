@@ -1,7 +1,16 @@
 # Proposal: ship `video-summarizer` as a Claude Code skill + distributable package
 
-**Status:** proposed, not started · **Branch context:** work to date is on `feat/frontmatter`
+**Status:** Phases 0/2/3 done on `feat/skill-packaging`; Phase 1 needs only the PyPI upload (your credentials). · **Branch context:** the two `feat/frontmatter` bug fixes are merged to `main`; this work is on `feat/skill-packaging`.
 **Audience:** an agent picking this up cold — no prior conversation context assumed.
+
+## Done so far (on `feat/skill-packaging`)
+
+- **Phase 0** ✅ — `python -m build` succeeds in a clean venv with the SPDX `license = "Apache-2.0"` string (no fallback needed). Wheel + sdist build and `twine check` passes.
+- **Phase 1** — wheel smoke-tested (installs in a fresh venv, console script works); artifacts built and `twine check`ed. **Remaining: the actual `twine upload`** (needs your PyPI credentials — not done autonomously).
+- **Phase 2** ✅ — Claude Code plugin in `plugin/` + marketplace at `.claude-plugin/marketplace.json`; `plugin/skills/summarize-video/SKILL.md` wraps the CLI and adds Q&A. Manifest schemas verified against current `code.claude.com` docs. **Remaining: interactive local test** (`/plugin marketplace add <local path>` → install → run end-to-end against a real URL) — can't be run non-interactively.
+- **Phase 3** ✅ — `_anthropic_backend` (`SUMMARIZERS["claude"]`, `claude-opus-4-8`) + `--summary-backend claude`, backend-aware default model, and automatic Gemini→Claude fallback. TDD'd; suite green (100 tests).
+
+**Open questions, resolved:** plugin lives in an in-repo `plugin/` subdirectory; the skill installs the CLI only with user consent (never silently); PyPI-vs-TestPyPI left to you at upload time.
 
 ## TL;DR
 

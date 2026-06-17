@@ -58,14 +58,15 @@ def _lang_from_vtt(path: str) -> str:
 
 
 def fetch_subtitles(url: str, workdir, run_fn=subprocess.run,
-                    lang: str = "en") -> dict | None:
+                    lang: str = "en", cookie_args=()) -> dict | None:
     """Try to download subtitles/auto-captions for `url` in the preferred
-    `lang` (and its regional variants). Returns a transcript dict
+    `lang` (and its regional variants). `cookie_args` are extra yt-dlp flags
+    (e.g. ['--cookies-from-browser', 'chrome']). Returns a transcript dict
     (source='subtitles', lang=<actual subtitle language>) or None if no
     subtitle track was produced."""
     out_tmpl = os.path.join(str(workdir), "sub")
     cmd = [
-        "yt-dlp", "--write-subs", "--write-auto-subs",
+        "yt-dlp", *cookie_args, "--write-subs", "--write-auto-subs",
         "--sub-format", "vtt", "--sub-langs", f"{lang}.*,{lang}",
         "--skip-download", "-o", out_tmpl, "--", url,
     ]
@@ -149,7 +150,7 @@ def resolve_transcript(source: str, is_url: bool, workdir, whisper_backend: str,
                        model: str, lang: str = "en", whisper_lang: str = "auto",
                        run_fn=subprocess.run, fetch_fn=fetch_subtitles,
                        acquire_fn=None, extract_fn=extract_audio,
-                       transcribe_fn=transcribe_audio) -> dict:
+                       transcribe_fn=transcribe_audio, cookie_args=()) -> dict:
     """Cheapest source first: subtitles (URLs only) -> acquire media -> Whisper.
 
     `lang` is the subtitle preference and the summary-language fallback.
@@ -159,11 +160,15 @@ def resolve_transcript(source: str, is_url: bool, workdir, whisper_backend: str,
     returned transcript carries a 'lang' field: the subtitle language, the
     detected/explicit Whisper language, or the `lang` hint as a fallback."""
     if is_url:
-        subs = fetch_fn(source, workdir, run_fn=run_fn, lang=lang)
+        # Pass cookie_args only when set, so injected fetch_fns with a strict
+        # signature (no cookie_args param) keep working in the common case.
+        extra = {"cookie_args": cookie_args} if cookie_args else {}
+        subs = fetch_fn(source, workdir, run_fn=run_fn, lang=lang, **extra)
         if subs is not None:
             return subs
     if acquire_fn is None:
-        media = acquire_media(source, is_url, workdir, run_fn=run_fn)
+        media = acquire_media(source, is_url, workdir, run_fn=run_fn,
+                              cookie_args=cookie_args)
     else:
         media = acquire_fn()
     audio = extract_fn(media, workdir, run_fn=run_fn)

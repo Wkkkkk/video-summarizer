@@ -19,6 +19,23 @@ def test_acquire_passes_timeout_to_run_fn(tmp_path):
     assert captured.get("timeout")  # a positive download timeout is enforced
 
 
+def test_acquire_passes_cookie_args_to_ytdlp(tmp_path):
+    captured = {}
+
+    def fake_run(cmd, **kwargs):
+        captured["cmd"] = cmd
+        (tmp_path / "media.mp4").write_bytes(b"x")
+        class R:
+            returncode = 0
+        return R()
+
+    acquire_media("https://x/y", is_url=True, workdir=tmp_path, run_fn=fake_run,
+                  cookie_args=["--cookies-from-browser", "chrome"])
+    cmd = captured["cmd"]
+    assert cmd[0] == "yt-dlp"
+    assert "--cookies-from-browser" in cmd and "chrome" in cmd
+
+
 def test_acquire_raises_stage_error_on_timeout(tmp_path):
     def fake_run(cmd, **kwargs):
         raise subprocess.TimeoutExpired(cmd, kwargs.get("timeout", 1))

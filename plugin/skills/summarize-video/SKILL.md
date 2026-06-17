@@ -29,6 +29,7 @@ conversational layer the CLI lacks: answering questions, reframing, and condensi
    - Drop `--summary-backend claude` to use the default Gemini backend (needs `GEMINI_API_KEY`).
    - For yt-dlp site URLs the real video title is fetched automatically; pass `--title "<clean title>"` only to override it (or for a direct media URL whose basename is ugly).
    - Add `--visual` only if the user asks about on-screen text/slides/charts (Gemini-only, costs more).
+   - If a site returns HTTP 412 / login-required (e.g. some Bilibili videos), retry with `--cookies-from-browser chrome` (or the user's browser) to use their logged-in session.
    The CLI prints the path of the written markdown file. Run with `--dry-run` first if you want to show the plan.
 
 4. **Read the produced markdown** at the printed path. It has YAML frontmatter

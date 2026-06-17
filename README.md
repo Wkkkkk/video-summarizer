@@ -42,6 +42,11 @@ with `yt-dlp` first. Direct media URLs (e.g. public R2 `.mp4` links) and
 Bilibili work out of the box; **YouTube** video downloads additionally need a
 JavaScript runtime on PATH (`node`, `deno`, or `bun`) for yt-dlp.
 
+Some sites gate videos behind a login or risk-control (e.g. certain Bilibili
+videos return HTTP 412). Pass a logged-in session to yt-dlp with
+`--cookies-from-browser chrome` (or `firefox`/`safari`/…), or
+`--cookies path/to/cookies.txt`.
+
 ## Usage
 
 ```bash

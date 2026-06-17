@@ -212,6 +212,41 @@ def test_cli_auto_title_falls_back_to_basename_when_metadata_none(tmp_path, monk
     assert list(tmp_path.glob("*.md"))[0].name == "my-clip.md"
 
 
+def test_cookie_args_builder():
+    import argparse
+    assert cli._cookie_args(argparse.Namespace(cookies_from_browser="chrome", cookies=None)) \
+        == ["--cookies-from-browser", "chrome"]
+    assert cli._cookie_args(argparse.Namespace(cookies_from_browser=None, cookies="/c.txt")) \
+        == ["--cookies", "/c.txt"]
+    assert cli._cookie_args(argparse.Namespace(cookies_from_browser=None, cookies=None)) == []
+
+
+def test_cli_threads_cookie_args_to_transcript_and_title(tmp_path, monkeypatch):
+    captured = {}
+
+    def fake_resolve(*a, **k):
+        captured["resolve"] = k.get("cookie_args")
+        return {"text": "hi", "segments": [], "source": "subtitles", "lang": "en"}
+    monkeypatch.setattr(cli, "resolve_transcript", fake_resolve)
+
+    def fake_meta(url, *a, **k):
+        captured["meta"] = k.get("cookie_args")
+        return "PI Architecture Deep Dive"
+    monkeypatch.setattr(cli, "_title_from_url_metadata", fake_meta)
+    monkeypatch.setattr(cli, "summarize",
+        lambda *a, **k: {"tldr": "s", "key_points": [], "takeaways": [], "chapters": []})
+    monkeypatch.setattr(cli, "make_gemini_client", lambda: object())
+    monkeypatch.setattr(cli, "today_str", lambda: "2026-06-16")
+    monkeypatch.setenv("GEMINI_API_KEY", "x")
+
+    code = cli.main(["https://www.bilibili.com/video/BV1J87Q6xEL7",
+                     "--cookies-from-browser", "chrome", "--out", str(tmp_path)])
+    assert code == 0
+    assert captured["resolve"] == ["--cookies-from-browser", "chrome"]
+    assert captured["meta"] == ["--cookies-from-browser", "chrome"]
+    assert list(tmp_path.glob("*.md"))[0].name == "pi-architecture-deep-dive.md"
+
+
 def test_cli_dry_run_writes_nothing(tmp_path, monkeypatch):
     _patch_stages(monkeypatch, [])
     code = cli.main(["movie.mp4", "--dry-run", "--out", str(tmp_path)])
@@ -345,7 +380,7 @@ def test_cli_downloads_media_once_for_whisper_and_visual(tmp_path, monkeypatch):
     # visual stage must receive the LOCAL path, not the URL.
     calls = {"n": 0}
 
-    def fake_acquire(source, is_url, workdir, run_fn=None):
+    def fake_acquire(source, is_url, workdir, run_fn=None, cookie_args=()):
         calls["n"] += 1
         return "/local/media.mp4"
     monkeypatch.setattr(cli, "acquire_media", fake_acquire)

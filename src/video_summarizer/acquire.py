@@ -29,15 +29,16 @@ def _ytdlp_detail(proc) -> str:
 
 
 def acquire_media(source: str, is_url: bool, workdir, run_fn=subprocess.run,
-                  timeout: int = _DOWNLOAD_TIMEOUT_SECONDS) -> str:
+                  timeout: int = _DOWNLOAD_TIMEOUT_SECONDS, cookie_args=()) -> str:
     """Return a local media path for `source`. Local files pass through; URLs
-    are downloaded with yt-dlp into `workdir`. Raises StageError on download
-    failure, timeout, or if no media file is produced; the yt-dlp error is
-    appended to the message when available."""
+    are downloaded with yt-dlp into `workdir`. `cookie_args` are extra yt-dlp
+    flags (e.g. ['--cookies-from-browser', 'chrome']) for sites behind a login
+    or risk-control. Raises StageError on download failure, timeout, or if no
+    media file is produced; the yt-dlp error is appended when available."""
     if not is_url:
         return source
     out_tmpl = os.path.join(str(workdir), "media.%(ext)s")
-    cmd = ["yt-dlp", "-f", "b/bv*+ba", "-o", out_tmpl, "--", source]
+    cmd = ["yt-dlp", *cookie_args, "-f", "b/bv*+ba", "-o", out_tmpl, "--", source]
     try:
         proc = run_fn(cmd, capture_output=True, text=True, timeout=timeout)
     except subprocess.TimeoutExpired:

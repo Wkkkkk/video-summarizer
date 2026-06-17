@@ -62,6 +62,22 @@ clashes get a `-2`, `-3`, … suffix rather than overwriting). Exit codes: `0`
 success, `1` partial (e.g. summary failed but transcript written), `2`
 config/usage error.
 
+## Use as a Claude Code plugin
+
+This repo also ships a Claude Code plugin (in `plugin/`) that wraps the CLI and adds a
+conversational "ask questions about the video" layer. The repo root is itself a plugin
+marketplace (`.claude-plugin/marketplace.json`).
+
+```text
+/plugin marketplace add Wkkkkk/video-summarizer     # or a local path to this repo
+/plugin install video-summarizer@video-summarizer
+/video-summarizer:summarize-video                   # then share a video file or URL
+```
+
+The skill detects the `video-summarizer` CLI (prompting to `pipx install` it if missing),
+runs it, reads the produced markdown, and answers follow-up questions about the video at no
+extra model cost. It still needs the native deps and an API key described above.
+
 ## Test
 
 ```bash

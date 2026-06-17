@@ -1,0 +1,12 @@
+{
+  "name": "video-summarizer",
+  "owner": { "name": "Kun Wu" },
+  "description": "Marketplace for the video-summarizer Claude Code plugin.",
+  "plugins": [
+    {
+      "name": "video-summarizer",
+      "source": "./plugin",
+      "description": "Summarize any video into a structured markdown note (transcript + summary + chapters), then answer questions about it conversationally."
+    }
+  ]
+}

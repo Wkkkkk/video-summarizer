@@ -10,7 +10,11 @@ notes. Read the markdown to summarize and ask questions about the video.
    `ffmpeg` and transcribe with Whisper (`whisper.cpp` by default).
 2. **Summary + chapters** — a structured pass (TL;DR + key points + takeaways +
    chapters) over the transcript, by default `gemini-2.5-pro`. Override with
-   `--summary-model gemini-flash-latest` for a cheaper run.
+   `--summary-model gemini-flash-latest` for a cheaper run, or
+   `--summary-backend claude` to summarize with Claude (`claude-opus-4-8` by
+   default; needs `ANTHROPIC_API_KEY`). If the Gemini summary errors or
+   rate-limits and `ANTHROPIC_API_KEY` is set, the run automatically falls back
+   to Claude rather than degrading to a transcript-only file.
 3. **Visual notes** — opt-in (`--visual`) Gemini Pro video pass. Off by default.
    Runs at low media resolution to keep cost down; pass `--media-resolution
    default` for full-resolution frames when on-screen text or charts matter.

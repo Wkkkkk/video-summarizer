@@ -329,6 +329,74 @@ def test_cli_summary_model_defaults_to_pro(tmp_path, monkeypatch):
     assert captured["model"] == "gemini-2.5-pro"
 
 
+def test_cli_claude_backend_uses_anthropic_client_and_default_model(tmp_path, monkeypatch):
+    # --summary-backend claude must build an Anthropic client (no GEMINI key),
+    # pass it to summarize, and default the model to claude-opus-4-8.
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    sentinel = object()
+    monkeypatch.setattr(cli, "make_anthropic_client", lambda: sentinel)
+    monkeypatch.setattr(cli, "make_gemini_client",
+        lambda: (_ for _ in ()).throw(AssertionError("gemini client must not be built")))
+    monkeypatch.setattr(cli, "resolve_transcript",
+        lambda *a, **k: {"text": "hi", "segments": [], "source": "subtitles", "lang": "en"})
+    monkeypatch.setattr(cli, "today_str", lambda: "2026-06-16")
+    captured = {}
+
+    def fake_summary(transcript_text, backend, client, lang, model, **k):
+        captured.update(backend=backend, client=client, model=model)
+        return {"tldr": "s", "key_points": [], "takeaways": [], "chapters": []}
+    monkeypatch.setattr(cli, "summarize", fake_summary)
+
+    code = cli.main(["https://example.com/v", "--summary-backend", "claude",
+                     "--out", str(tmp_path)])
+    assert code == 0
+    assert captured["backend"] == "claude"
+    assert captured["client"] is sentinel
+    assert captured["model"] == "claude-opus-4-8"
+
+
+def test_cli_gemini_failure_falls_back_to_claude(tmp_path, monkeypatch, capsys):
+    # When the Gemini summary errors (e.g. rate limit) and Claude is configured,
+    # the CLI retries on the claude backend instead of degrading to transcript-only.
+    monkeypatch.setenv("GEMINI_API_KEY", "x")
+    monkeypatch.setattr(cli, "make_gemini_client", lambda: object())
+    monkeypatch.setattr(cli, "make_anthropic_client", lambda: object())
+    monkeypatch.setattr(cli, "resolve_transcript",
+        lambda *a, **k: {"text": "hi", "segments": [], "source": "subtitles", "lang": "en"})
+    monkeypatch.setattr(cli, "today_str", lambda: "2026-06-16")
+    calls = []
+
+    def fake_summary(transcript_text, backend, client, lang, model, **k):
+        calls.append(backend)
+        if backend == "gemini":
+            raise RuntimeError("rate limited")
+        return {"tldr": "from claude", "key_points": [], "takeaways": [], "chapters": []}
+    monkeypatch.setattr(cli, "summarize", fake_summary)
+
+    code = cli.main(["https://example.com/v", "--out", str(tmp_path)])
+    assert code == 0
+    assert calls == ["gemini", "claude"]
+    assert "from claude" in list(tmp_path.glob("*.md"))[0].read_text()
+    assert "claude fallback" in capsys.readouterr().err
+
+
+def test_cli_gemini_failure_without_claude_degrades(tmp_path, monkeypatch):
+    # Gemini fails and Claude isn't configured → degrade to transcript-only, exit 1.
+    monkeypatch.setenv("GEMINI_API_KEY", "x")
+    monkeypatch.setattr(cli, "make_gemini_client", lambda: object())
+    monkeypatch.setattr(cli, "make_anthropic_client",
+        lambda: (_ for _ in ()).throw(ConfigError("ANTHROPIC_API_KEY is required")))
+    monkeypatch.setattr(cli, "resolve_transcript",
+        lambda *a, **k: {"text": "hi", "segments": [{"start": 0.0, "text": "hi"}], "source": "subtitles", "lang": "en"})
+    monkeypatch.setattr(cli, "today_str", lambda: "2026-06-16")
+    monkeypatch.setattr(cli, "summarize",
+        lambda *a, **k: (_ for _ in ()).throw(RuntimeError("boom")))
+
+    code = cli.main(["https://example.com/v", "--out", str(tmp_path)])
+    assert code == 1
+    assert "_(summary failed)_" in list(tmp_path.glob("*.md"))[0].read_text()
+
+
 def test_cli_threads_media_resolution_to_visual(tmp_path, monkeypatch):
     captured = {}
 

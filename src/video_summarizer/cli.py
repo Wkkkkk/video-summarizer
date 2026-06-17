@@ -61,6 +61,28 @@ def make_gemini_client():
     return genai.Client(api_key=key)
 
 
+def make_anthropic_client():
+    """Build an Anthropic client from ANTHROPIC_API_KEY. Raises ConfigError if unset."""
+    key = os.environ.get("ANTHROPIC_API_KEY")
+    if not key:
+        raise ConfigError("ANTHROPIC_API_KEY is required for the claude summary backend")
+    import anthropic
+    return anthropic.Anthropic(api_key=key)
+
+
+# Per-backend defaults so the right model is used without forcing --summary-model.
+_DEFAULT_SUMMARY_MODELS = {"gemini": "gemini-2.5-pro", "claude": "claude-opus-4-8"}
+
+
+def make_summary_client(backend: str):
+    """Build the API client a summary backend needs. Unknown backends get the
+    Gemini client (matching the historical default); summarize() then raises
+    ConfigError for a truly unknown backend."""
+    if backend == "claude":
+        return make_anthropic_client()
+    return make_gemini_client()
+
+
 def _title_from_source(source: str) -> str:
     base = os.path.basename(source.rstrip("/")) or source
     return os.path.splitext(base)[0] or "video"
@@ -76,8 +98,9 @@ def main(argv=None) -> int:
     p.add_argument("--out", default="./analyses", help="output directory")
     p.add_argument("--whisper-backend", default="whisper.cpp")
     p.add_argument("--summary-backend", default="gemini")
-    p.add_argument("--summary-model", default="gemini-2.5-pro",
-                   help="model for the summary backend (e.g. gemini-flash-latest for cheap)")
+    p.add_argument("--summary-model", default=None,
+                   help="model for the summary backend; defaults per backend "
+                        "(gemini-2.5-pro / claude-opus-4-8)")
     p.add_argument("--whisper-model", default="small")
     p.add_argument("--lang", default=None,
                    help="transcription/summary language; omit to auto-detect")
@@ -88,6 +111,8 @@ def main(argv=None) -> int:
 
     lang = args.lang or "en"            # subtitle preference + summary fallback
     whisper_lang = args.lang or "auto"  # whisper transcription language
+    summary_model = args.summary_model or _DEFAULT_SUMMARY_MODELS.get(
+        args.summary_backend, "gemini-2.5-pro")
 
     is_url = args.source.startswith(_URL_PREFIXES)
     title = args.title or _title_from_source(args.source)
@@ -96,16 +121,26 @@ def main(argv=None) -> int:
         plan = (f"source={args.source} is_url={is_url} visual={args.visual} "
                 f"whisper={args.whisper_backend}:{args.whisper_model} "
                 f"lang={lang} whisper_lang={whisper_lang} "
-                f"summary={args.summary_backend}:{args.summary_model} "
+                f"summary={args.summary_backend}:{summary_model} "
                 f"media_res={args.media_resolution} out={args.out}")
         print("DRY RUN — would run:\n  " + plan)
         return 0
 
     try:
-        client = make_gemini_client()
+        client = make_summary_client(args.summary_backend)
     except ConfigError as e:
         print(f"error: {e}", file=sys.stderr)
         return 2
+
+    # The --visual pass is Gemini-only; reuse the summary client when it's Gemini,
+    # otherwise build a dedicated one (so claude users still get the visual pass).
+    visual_client = client if args.summary_backend != "claude" else None
+    if args.visual and visual_client is None:
+        try:
+            visual_client = make_gemini_client()
+        except ConfigError as e:
+            print(f"error: {e}", file=sys.stderr)
+            return 2
 
     exit_code = 0
     with tempfile.TemporaryDirectory() as workdir:
@@ -128,23 +163,38 @@ def main(argv=None) -> int:
             print(f"error: transcript failed: {e}", file=sys.stderr)
             return 1
 
+        summary_lang = transcript.get("lang", lang)
         try:
             analysis = summarize(transcript["text"], backend=args.summary_backend,
-                                 client=client, lang=transcript.get("lang", lang),
-                                 model=args.summary_model)
+                                 client=client, lang=summary_lang, model=summary_model)
         except ConfigError as e:
             print(f"error: {e}", file=sys.stderr)
             return 2
         except Exception as e:
-            print(f"warning: summary failed: {e}", file=sys.stderr)
-            analysis = {"tldr": "_(summary failed)_", "key_points": [],
-                        "takeaways": [], "chapters": []}
-            exit_code = 1
+            # Best-effort: before degrading to transcript-only, retry on the Claude
+            # backend (a softer landing when Gemini errors/rate-limits). Skipped if
+            # we were already on Claude or ANTHROPIC_API_KEY isn't set.
+            analysis = None
+            if args.summary_backend == "gemini":
+                try:
+                    analysis = summarize(transcript["text"], backend="claude",
+                                         client=make_anthropic_client(),
+                                         lang=summary_lang,
+                                         model=_DEFAULT_SUMMARY_MODELS["claude"])
+                    print(f"warning: gemini summary failed ({e}); used claude fallback",
+                          file=sys.stderr)
+                except Exception:
+                    analysis = None
+            if analysis is None:
+                print(f"warning: summary failed: {e}", file=sys.stderr)
+                analysis = {"tldr": "_(summary failed)_", "key_points": [],
+                            "takeaways": [], "chapters": []}
+                exit_code = 1
 
         visual = None
         if args.visual:
             try:
-                visual = visual_notes(get_media(), backend="gemini-pro", client=client,
+                visual = visual_notes(get_media(), backend="gemini-pro", client=visual_client,
                                       media_resolution=args.media_resolution)
             except Exception as e:
                 print(f"warning: visual notes failed: {e}", file=sys.stderr)

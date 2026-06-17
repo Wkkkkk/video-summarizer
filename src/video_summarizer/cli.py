@@ -37,6 +37,21 @@ def probe_duration(source: str, run_fn=subprocess.run) -> str:
         return "??:??"
 
 
+def _duration_from_segments(segments) -> str:
+    """Approximate duration as the last cue's start time, formatted MM:SS.
+
+    Used when no local media file is available to ffprobe — e.g. a URL whose
+    subtitles were used without ever downloading the video. Returns '??:??'
+    when the segments carry no usable start time."""
+    if not segments:
+        return "??:??"
+    try:
+        secs = int(segments[-1]["start"])
+    except (KeyError, IndexError, TypeError, ValueError):
+        return "??:??"
+    return f"{secs // 60:02d}:{secs % 60:02d}"
+
+
 def make_gemini_client():
     """Build a Gemini client from GEMINI_API_KEY. Raises ConfigError if unset."""
     key = os.environ.get("GEMINI_API_KEY")
@@ -135,9 +150,18 @@ def main(argv=None) -> int:
                 print(f"warning: visual notes failed: {e}", file=sys.stderr)
                 exit_code = 1
 
+        # Duration: ffprobe the local media when we have it (downloaded for the
+        # Whisper/visual path, or a local-file source); otherwise — e.g. a URL
+        # whose subtitles were used without a download — fall back to the last
+        # transcript cue's timestamp. ffprobe can't read a YouTube page URL.
+        media_path = _media.get("path") or (args.source if not is_url else None)
+        duration = probe_duration(media_path) if media_path else "??:??"
+        if duration == "??:??":
+            duration = _duration_from_segments(transcript.get("segments", []))
+
         md = render_markdown(
             title=title, source=args.source,
-            duration=probe_duration(args.source), date=today_str(),
+            duration=duration, date=today_str(),
             transcript=transcript, analysis=analysis, visual=visual)
 
         os.makedirs(args.out, exist_ok=True)
@@ -147,3 +171,7 @@ def main(argv=None) -> int:
         print(out_path)
 
     return exit_code
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

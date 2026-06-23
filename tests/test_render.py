@@ -104,6 +104,8 @@ def test_render_markdown_emits_frontmatter_then_h1_and_body_line():
     assert fm["title"] == "My Talk"
     assert fm["source"] == "https://x/v.mp4"
     assert fm["transcript_source"] == "whisper:base"
+    assert fm["collected_at"] == "2026-06-16"
+    assert fm["interaction_time"] == fm["collected_at"]
     # H1 and the existing body metadata line are both kept (decision 3).
     assert "# My Talk" in body
     assert "· transcript-source: whisper:base_" in body

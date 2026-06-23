@@ -54,6 +54,8 @@ def _frontmatter(title, source, duration, date, transcript_source) -> str:
         "source": source,
         "duration": duration,
         "date": date,
+        "collected_at": date,
+        "interaction_time": date,
         "transcript_source": transcript_source,
     }
     meta = {k: v for k, v in meta.items() if v not in (None, "")}
